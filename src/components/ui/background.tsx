@@ -1,14 +1,12 @@
 export function DottedBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0B0F16] text-white relative overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.20) 1px, transparent 0)",
-          backgroundSize: "22px 22px",
-        }}
-      />
+    <div className="relative min-h-screen bg-[#0b0f14] text-white">
+      {/* points */}
+      <div className="pointer-events-none absolute inset-0 opacity-60 dots-layer" />
+
+      {/* glow hover */}
+      <div className="pointer-events-none absolute inset-0 dots-glow-layer" />
+
       <div className="relative">{children}</div>
     </div>
   );
