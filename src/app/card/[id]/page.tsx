@@ -7,132 +7,128 @@ import CardTabs from "./tabs";
 
 export default function CardPage({ params }: { params: { id: string } }) {
   const card = cards.find((c) => c.id === params.id) ?? cards[0];
-
-  const pctRaw = (card.depositUsed / card.depositLimit) * 100;
-  const pct = Number.isFinite(pctRaw) ? Math.round(pctRaw) : 0;
+  const pct = Math.round((card.depositUsed / card.depositLimit) * 100);
 
   return (
     <DottedBackground>
       <TopNav />
 
-      <div className="px-6 pb-14 max-w-6xl mx-auto">
-        {/* top row: back + actions + balance */}
-        <div className="pt-8 flex items-center justify-between">
-          <Link
-            href="/wallet"
-            className="text-sm opacity-70 hover:opacity-100 transition"
-          >
-            ← Back
-          </Link>
-
+      <div className="px-6 pb-16 max-w-6xl mx-auto">
+        {/* top row: actions LEFT + balance RIGHT */}
+        <div className="mt-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button className="h-10 px-5 rounded-lg bg-white text-black text-sm font-medium shadow hover:opacity-95 transition">
+            <Link
+              href="/wallet"
+              className="text-sm opacity-70 hover:opacity-100 transition"
+            >
+              ← Back
+            </Link>
+
+            <button className="ml-4 h-10 px-5 rounded-lg bg-white text-black text-sm font-medium shadow hover:opacity-95 transition">
               Deposit
             </button>
 
-            <button className="h-10 px-5 rounded-lg bg-white/0 border border-white/15 text-sm hover:bg-white/5 transition">
+            <button className="h-10 px-5 rounded-lg bg-white/0 border border-white/15 text-sm opacity-90 hover:bg-white/5 transition">
               Withdraw/Transfer
             </button>
 
-            <button className="h-10 w-10 rounded-lg bg-white/0 border border-white/15 text-sm hover:bg-white/5 transition">
+            <button className="h-10 w-10 rounded-lg bg-white/0 border border-white/15 text-sm opacity-80 hover:bg-white/5 transition">
               …
             </button>
           </div>
 
-          <div className="text-sm font-semibold opacity-90">
+          {/* balance pill (NOT dotted) */}
+          <div className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center text-sm font-semibold">
             {formatMoney(card.balance, "USD")}
           </div>
         </div>
 
-        {/* card + arrows */}
-        <div className="mt-8 flex items-center justify-center gap-10">
+        {/* card area (NO big outer frame) */}
+        <div className="mt-10 flex items-center justify-center gap-10">
           <button
-            aria-label="Previous"
             className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+            aria-label="Previous card"
           >
             ←
           </button>
 
-          {/* CARD (smaller, like SolCard) */}
-          <div className="relative w-full max-w-[640px]">
-            <div className="relative aspect-[1.75/1] rounded-2xl overflow-hidden border border-white/10 bg-white/[0.03]">
-              {/* subtle dots inside card */}
-              <div className="absolute inset-0 opacity-50 [background-image:radial-gradient(rgba(255,255,255,0.10)_1px,transparent_1px)] [background-size:18px_18px]" />
-              {/* soft vignette */}
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.06),rgba(0,0,0,0)_55%)]" />
+          {/* CARD (smaller, real card ratio) */}
+          <div className="relative w-full max-w-[520px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+            {/* subtle glass overlay */}
+            <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div className="relative p-6 h-full">
-                {/* top row in card */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-xs">
-                      Billing
-                    </span>
-                    <span className="text-xs opacity-70">👁</span>
-                  </div>
+            {/* top badges */}
+            <div className="absolute left-5 top-4 flex items-center gap-3">
+              <div className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-xs">
+                Billing
+              </div>
+              <div className="text-xs opacity-70">🙈</div>
+            </div>
 
-                  <div className="text-lg font-semibold tracking-wide opacity-90">
-                    SolCard
-                  </div>
-                </div>
+            <div className="absolute right-6 top-5 text-xl font-semibold tracking-wide">
+              SolCard
+            </div>
 
-                {/* middle: chip + number */}
-                <div className="mt-5 flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-fuchsia-500/70 to-cyan-400/60 border border-white/10" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg tracking-[0.35em] opacity-70">
-                      ••••
-                    </span>
-                    <span className="text-lg tracking-[0.35em] opacity-70">
-                      ••••
-                    </span>
-                    <span className="text-lg tracking-[0.35em] opacity-70">
-                      ••••
-                    </span>
-                    {/* last 4 big + “floating” */}
-                    <span className="ml-2 text-2xl font-semibold tracking-wider">
-                      {card.ending}
-                    </span>
-                  </div>
-                </div>
+            {/* chip */}
+            <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/50 border border-white/10" />
 
-                {/* bottom row */}
-                <div className="mt-6 flex items-end justify-between">
-                  <div className="grid grid-cols-2 gap-10">
-                    <div>
-                      <div className="text-xs opacity-60">Card Holder</div>
-                      <div className="text-base font-semibold uppercase tracking-wide">
-                        {card.holder}
-                      </div>
-                    </div>
+            {/* blurred number (NOT dots) */}
+            <div className="absolute left-6 top-[108px] flex items-center gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="inline-block blur-[6px] opacity-70 select-none">
+                  1234
+                </span>
+                <span className="inline-block blur-[6px] opacity-70 select-none">
+                  5678
+                </span>
+                <span className="inline-block blur-[6px] opacity-70 select-none">
+                  9012
+                </span>
+              </div>
 
-                    <div>
-                      <div className="text-xs opacity-60">Expires</div>
-                      <div className="text-base font-semibold">{card.expires}</div>
-                    </div>
-                  </div>
+              <div className="text-2xl font-semibold tracking-wider">
+                {card.ending}
+              </div>
+            </div>
 
-                  {/* mastercard */}
-                  <div className="flex items-center">
-                    <div className="relative h-9 w-14">
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-yellow-400/80" />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-orange-500/80" />
-                    </div>
-                  </div>
-                </div>
+            {/* bottom infos */}
+            <div className="absolute left-6 bottom-6 grid grid-cols-2 gap-10">
+              <div>
+                <div className="text-xs opacity-60">Card Holder</div>
+                <div className="text-base font-semibold">{card.holder}</div>
+              </div>
+              <div>
+                <div className="text-xs opacity-60">Expires</div>
+                <div className="text-base font-semibold">{card.expires}</div>
+              </div>
+            </div>
+
+            {/* CVV blurred (visual only) */}
+            <div className="absolute right-24 bottom-8 text-xs opacity-70">
+              CVV{" "}
+              <span className="inline-block blur-[6px] opacity-70 select-none">
+                123
+              </span>
+            </div>
+
+            {/* mastercard */}
+            <div className="absolute right-6 bottom-6">
+              <div className="relative h-8 w-14">
+                <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-red-500/80" />
+                <div className="absolute left-4 top-0 h-8 w-8 rounded-full bg-yellow-400/80 mix-blend-screen" />
               </div>
             </div>
           </div>
 
           <button
-            aria-label="Next"
             className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+            aria-label="Next card"
           >
             →
           </button>
         </div>
 
-        {/* progress line */}
+        {/* usage bar */}
         <div className="mt-8 max-w-[820px] mx-auto">
           <div className="flex items-center justify-between text-sm opacity-85 mb-2">
             <div>{pct}% of your monthly deposit limit used</div>
@@ -142,39 +138,43 @@ export default function CardPage({ params }: { params: { id: string } }) {
             </div>
           </div>
 
-          <div className="h-[3px] rounded-full bg-white/10 overflow-hidden">
+          <div className="h-[6px] rounded-full bg-white/15 overflow-hidden">
             <div
-              className="h-full bg-white/60"
-              style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+              className="h-full bg-white/70"
+              style={{ width: `${Math.min(100, pct)}%` }}
             />
           </div>
         </div>
 
-        {/* rules (pink-ish like SolCard) */}
+        {/* rules (light, opaque, pink accent) */}
         <div className="mt-6 max-w-[820px] mx-auto">
-          <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-rose-200">⚠</span>
-              <div className="text-sm font-semibold text-rose-100">
-                Card Usage Rules
+          <div className="rounded-2xl border border-rose-200/40 bg-white/90 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.15)] overflow-hidden">
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-2 font-semibold text-rose-700">
+                <span className="text-rose-600">⚠️</span> Card Usage Rules
               </div>
-            </div>
 
-            <ul className="text-xs leading-5 text-rose-100/80 list-disc pl-5">
-              <li>No crypto-related platforms or usage scenarios</li>
-              <li>No gift card / voucher / gaming sites</li>
-              <li>Some merchants may be blocked depending on risk</li>
-              <li>High decline rates may trigger card cancellation</li>
-            </ul>
+              <div className="mt-2 text-sm text-black/70">
+                The following usage scenarios are strictly prohibited and will
+                lead to immediate cancellation and fund freezing:
+              </div>
 
-            <div className="text-xs mt-2 underline text-rose-100/70">
-              Learn more
+              <ul className="mt-3 text-sm text-black/75 list-disc pl-5 space-y-1">
+                <li>No crypto-related platforms or usage scenarios</li>
+                <li>No gift card / voucher / gaming sites</li>
+                <li>Some merchants may be blocked depending on risk</li>
+                <li>High decline rates may trigger card cancellation</li>
+              </ul>
+
+              <div className="mt-3 text-sm underline text-rose-700">
+                Learn more
+              </div>
             </div>
           </div>
         </div>
 
         {/* tabs + table */}
-        <div className="mt-6 max-w-[980px] mx-auto">
+        <div className="mt-6 max-w-[920px] mx-auto">
           <CardTabs cardId={card.id} />
         </div>
       </div>
