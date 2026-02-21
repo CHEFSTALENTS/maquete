@@ -78,10 +78,13 @@ export default function EmptySlotView({ slot }: { slot: string }) {
         </div>
 
         {/* table container (SolCard-like) */}
-        <Shell className="p-4 sc-glass">
-          <TransactionsTable rows={[]} currency="USD" emptyText={tab === "transactions" ? "No transactions." : " No topups." />
-          {/* rows vide => “No results.” chez toi. Si tu veux “No transactions.” comme SolCard, je te fais la variante. */}
-        </Shell>
+       <Shell className="p-4 sc-glass">
+  <TransactionsTable
+    rows={[]}
+    currency="USD"
+    emptyText={tab === "transactions" ? "No transactions." : "No topups."}
+  />
+</Shell>
       </div>
     </div>
   );
