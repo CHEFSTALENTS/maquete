@@ -1,5 +1,5 @@
 import { DottedBackground } from "@/components/ui/background";
-import { TopNav } from "@/components/top-nav";
+import { TopNav } from "../../components/top-nav";
 import { Shell } from "@/components/ui/card-shell";
 
 export default function ReferralsPage() {
