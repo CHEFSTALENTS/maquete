@@ -8,9 +8,11 @@ import type { Transaction } from "@/lib/mock-data";
 export function TransactionsTable({
   rows,
   currency = "USD",
+  emptyText = "No transactions.", // ✅ nouveau
 }: {
   rows: Transaction[];
   currency?: string;
+  emptyText?: string; // ✅ nouveau
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -38,13 +40,21 @@ export function TransactionsTable({
         <div className="w-full overflow-auto">
           <table className="w-full text-sm">
             <tbody>
-              {paged.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.description}</td>
-                  <td>{formatMoney(r.amount, currency)}</td>
-                  <td>{formatDateTime(r.date)}</td>
+              {paged.length === 0 ? ( // ✅ nouveau
+                <tr>
+                  <td colSpan={3} className="py-10 text-center text-white/60">
+                    {emptyText}
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                paged.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.description}</td>
+                    <td>{formatMoney(r.amount, currency)}</td>
+                    <td>{formatDateTime(r.date)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
