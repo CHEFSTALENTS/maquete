@@ -21,3 +21,5 @@ html, body {
 .dots-glow-layer:hover{
   opacity: 0.22; /* ✅ très léger */
 }
+.dots-glow-layer{ opacity:0; transition:opacity .25s ease; }
+.dotted-hover:hover .dots-glow-layer{ opacity:.22; }
