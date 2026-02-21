@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cards } from "@/lib/mock-data";
-import { TransactionsTable } from "@/components/transactions-table";
+import TransactionsTable from "@/components/transactions-table";
 
 export default function CardTabs({ cardId }: { cardId: string }) {
   const card = useMemo(() => cards.find((c) => c.id === cardId) ?? cards[0], [cardId]);
