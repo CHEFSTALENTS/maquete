@@ -1,62 +1,54 @@
 "use client";
 
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { Shell } from "@/components/ui/card-shell";
-import { cards } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import { formatDateTime, formatMoney } from "@/lib/utils";
+import type { Transaction } from "@/lib/mock-data";
 
-export function SlotGrid() {
-  const active = cards[0];
+export function TransactionsTable({
+  rows,
+  currency = "USD",
+}: {
+  rows: Transaction[];
+  currency?: string;
+}) {
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
 
-  const slots = Array.from({ length: 9 }).map((_, i) => i);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((r) => {
+      return (
+        r.description.toLowerCase().includes(s) ||
+        r.status.toLowerCase().includes(s) ||
+        r.type.toLowerCase().includes(s)
+      );
+    });
+  }, [q, rows]);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pages);
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
-    <div className="px-6 pb-10">
-      <h1 className="text-3xl font-semibold mb-6 text-center">My Wallet</h1>
-
-      <div className="grid grid-cols-3 gap-6 max-w-5xl mx-auto">
-        {/* Slot 1 = carte */}
-        <Shell className="p-5 col-span-1">
-          <div className="text-sm opacity-80 mb-4 underline">SolCard</div>
-
-          <div className="flex items-center gap-2 mb-4">
-            <div className="h-3 w-3 rounded-full bg-white/20 border border-white/10" />
-            <div className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10">
-              Slot1
-            </div>
-          </div>
-
-          <div className="flex items-end justify-between">
-            <div className="text-lg font-semibold">
-              Ending in {active.ending}
-            </div>
-            <div className="h-6 w-10 rounded-full bg-gradient-to-r from-orange-500/80 to-yellow-400/80 opacity-90" />
-          </div>
-
-          <div className="mt-4">
-            <Link
-              href={`/card/${active.id}`}
-              className="inline-flex text-sm opacity-80 hover:opacity-100 underline"
-            >
-              Open card →
-            </Link>
-          </div>
-        </Shell>
-
-        {/* Placeholders */}
-        {slots.slice(1).map((i) => (
-          <div
-            key={i}
-            className={cn(
-              "rounded-2xl border border-dashed border-white/20 bg-white/0 h-[150px] relative overflow-hidden",
-              "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
-            )}
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-white/10 border border-white/10" />
-            </div>
-          </div>
-        ))}
-      </div>
+    <div className="mt-4">
+      <Shell className="overflow-hidden">
+        <div className="w-full overflow-auto">
+          <table className="w-full text-sm">
+            <tbody>
+              {paged.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.description}</td>
+                  <td>{formatMoney(r.amount, currency)}</td>
+                  <td>{formatDateTime(r.date)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Shell>
     </div>
   );
 }
