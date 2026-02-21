@@ -1,20 +1,51 @@
-import clsx from "clsx";
+export type TxType = "Auth" | "Verification";
+export type TxStatus = "Succeed" | "Failed";
 
-export function cn(...inputs: any[]) {
-  return clsx(inputs);
-}
+export type Transaction = {
+  id: string;
+  type: TxType;
+  status: TxStatus;
+  description: string;
+  amount: number;
+  date: string; // ISO
+};
 
-export function formatMoney(amount: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
-}
+export type Card = {
+  id: string;
+  name: string;
+  ending: string;
+  holder: string;
+  expires: string; // MM/YY
+  balance: number;
+  depositUsed: number;
+  depositLimit: number;
+  transactions: Transaction[];
+  topups: Transaction[];
+};
 
-export function formatDateTime(iso: string) {
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
+export const cards: Card[] = [
+  {
+    id: "solcard-1",
+    name: "SolCard",
+    ending: "8555",
+    holder: "JEROME GUYARCHE",
+    expires: "01/29",
+    balance: 8905.0,
+    depositUsed: 1189.32,
+    depositLimit: 100000,
+    transactions: [
+      { id: "t1", type: "Auth", status: "Succeed", description: "DELIVEROO PARIS 09 75FR", amount: 0.4, date: "2026-02-16T03:19:00Z" },
+      { id: "t2", type: "Auth", status: "Succeed", description: "PUBLI POST CHATEL GUYON FR", amount: 206.5, date: "2026-02-13T16:08:00Z" },
+      { id: "t5", type: "Auth", status: "Succeed", description: "ORANGE VAD 73 PARIS FR", amount: 0.16, date: "2026-02-12T03:33:00Z" },
+      { id: "t6", type: "Auth", status: "Succeed", description: "Trip.com London GB", amount: 0.85, date: "2026-02-11T03:36:00Z" },
+      { id: "t7", type: "Auth", status: "Succeed", description: "DELIVEROO PARIS 09 75FR", amount: 33.65, date: "2026-02-09T13:59:00Z" },
+      { id: "t8", type: "Verification", status: "Succeed", description: "DELIVEROO LONDON GB", amount: 0.0, date: "2026-02-09T13:54:00Z" },
+      { id: "t9", type: "Auth", status: "Succeed", description: "ORANGE VAD 73 PARIS FR", amount: 83.32, date: "2026-02-09T13:05:00Z" },
+      { id: "t10", type: "Auth", status: "Succeed", description: "Trip.com London GB", amount: 432.66, date: "2026-02-09T11:52:00Z" }
+    ],
+    topups: [
+      { id: "p1", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 3900, date: "2026-02-10T10:10:00Z" },
+      { id: "p2", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 5100, date: "2026-02-12T09:00:00Z" }
+    ]
+  }
+];
