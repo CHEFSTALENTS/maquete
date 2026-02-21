@@ -1,136 +1,156 @@
-"use client";
+import Link from "next/link";
+import { DottedBackground } from "@/components/ui/background";
+import { TopNav } from "@/components/top-nav";
+import { cards } from "@/lib/mock-data";
+import { formatMoney } from "@/lib/utils";
+import CardTabs from "./tabs";
 
-import { useMemo, useState } from "react";
-import { Shell } from "@/components/ui/card-shell";
-import { formatDateTime, formatMoney } from "@/lib/utils";
-import type { Transaction } from "@/lib/mock-data";
-
-export function TransactionsTable({
-  rows,
-  currency = "USD",
-  emptyText = "No transactions.",
-}: {
-  rows: Transaction[];
-  currency?: string;
-  emptyText?: string;
-}) {
-  const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 8;
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) => {
-      return (
-        r.description.toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s) ||
-        r.type.toLowerCase().includes(s)
-      );
-    });
-  }, [q, rows]);
-
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, pages);
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+export default function CardPage({ params }: { params: { id: string } }) {
+  const card = cards.find((c) => c.id === params.id) ?? cards[0];
+  const pct = Math.round((card.depositUsed / card.depositLimit) * 100);
 
   return (
-    <div className="w-full">
-      {/* controls row (SolCard-like) */}
-      <div className="flex items-center justify-between gap-4 mb-3">
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Filter statuses..."
-          className="h-10 w-full max-w-[520px] rounded-lg bg-white/5 border border-white/10 px-3 text-sm outline-none placeholder:text-white/40 focus:border-white/20"
-        />
+    <DottedBackground>
+      <TopNav />
 
-        <button className="h-10 px-4 rounded-lg bg-white/5 border border-white/10 text-sm flex items-center gap-2 hover:bg-white/10 transition">
-          Columns <span className="opacity-70">⌄</span>
-        </button>
+      <div className="px-6 pb-12 max-w-6xl mx-auto">
+        {/* top row */}
+        <div className="mt-6 flex items-center justify-between">
+          <Link href="/wallet" className="text-sm opacity-80 hover:opacity-100">
+            ← Back
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <button className="px-5 py-2 rounded-lg bg-white text-black text-sm font-medium shadow hover:opacity-95 transition">
+              Deposit
+            </button>
+
+            <button className="px-5 py-2 rounded-lg bg-white/0 border border-white/10 text-sm hover:bg-white/5 transition">
+              Withdraw/Transfer
+            </button>
+
+            <button className="px-3 py-2 rounded-lg bg-white/0 border border-white/10 text-sm opacity-80 hover:bg-white/5 transition">
+              …
+            </button>
+          </div>
+
+          <div className="text-sm font-semibold opacity-90">
+            {formatMoney(card.balance, "USD")}
+          </div>
+        </div>
+
+        {/* card display */}
+        <div className="mt-8 flex items-center justify-center gap-10">
+          <button className="h-9 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center">
+            ←
+          </button>
+
+          <div className="relative w-full max-w-[720px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-white/5">
+            <div className="absolute inset-0 opacity-55 [background-image:radial-gradient(rgba(255,255,255,0.10)_1px,transparent_1px)] [background-size:18px_18px]" />
+
+            <div className="relative h-full p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-xs">
+                    Billing
+                  </div>
+                  <span className="text-xs opacity-60">👁</span>
+                </div>
+
+                <div className="text-2xl font-semibold tracking-wide opacity-90">
+                  SolCard
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-fuchsia-500/70 to-cyan-400/60 border border-white/10" />
+                  <div>
+                    <div className="text-sm opacity-70">
+                      •••• •••• •••• {card.ending}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-10 text-xs">
+                      <div>
+                        <div className="opacity-60">Card Holder</div>
+                        <div className="text-base font-semibold">
+                          {card.holder}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="opacity-60">Expires</div>
+                        <div className="text-base font-semibold">
+                          {card.expires}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-8 w-12 rounded-full bg-gradient-to-r from-orange-500/80 to-yellow-400/80 opacity-95" />
+              </div>
+            </div>
+          </div>
+
+          <button className="h-9 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center">
+            →
+          </button>
+        </div>
+
+        {/* progress line */}
+        <div className="mt-7 max-w-[900px] mx-auto">
+          <div className="flex items-center justify-between text-sm opacity-80 mb-2">
+            <span>{pct}% of your monthly deposit limit used</span>
+            <span>
+              {formatMoney(card.depositUsed, "USD")} /{" "}
+              {formatMoney(card.depositLimit, "USD")}
+            </span>
+          </div>
+
+          <div className="h-[3px] rounded-full bg-white/20 overflow-hidden">
+            <div
+              className="h-full bg-white/60"
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* rules (pink warning) */}
+        <div className="mt-6 max-w-[900px] mx-auto">
+          <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-rose-200">⚠️</div>
+              <div className="w-full">
+                <div className="text-sm font-semibold text-rose-50/90 mb-1">
+                  Card Usage Rules
+                </div>
+
+                <div className="text-xs leading-5 text-rose-50/70">
+                  The following usage scenarios are strictly prohibited and will
+                  lead to immediate cancellation and fund freezing:
+                </div>
+
+                <ul className="mt-2 text-xs leading-5 text-rose-50/70 list-disc pl-5">
+                  <li>No crypto-related platforms or usage scenarios</li>
+                  <li>No gift card / voucher / gaming sites</li>
+                  <li>Some merchants may be blocked depending on risk</li>
+                  <li>High decline rates may trigger card cancellation</li>
+                </ul>
+
+                <div className="text-xs mt-2 underline text-rose-50/70">
+                  Learn more
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* tabs + table */}
+        <div className="mt-6 max-w-[900px] mx-auto">
+          <CardTabs cardId={card.id} />
+        </div>
       </div>
-
-      <Shell className="overflow-hidden bg-white/0 border border-white/10">
-        <div className="w-full overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-white/0">
-              <tr className="text-white/70">
-                <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[90px]">
-                  Type
-                </th>
-                <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[120px]">
-                  Status
-                </th>
-                <th className="text-left font-medium px-4 py-3 border-b border-white/10">
-                  Description <span className="opacity-60">⌄</span>
-                </th>
-                <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[140px]">
-                  Amount
-                </th>
-                <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[170px]">
-                  Date <span className="opacity-60">⌄</span>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {paged.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-10 text-center text-white/55"
-                  >
-                    {emptyText}
-                  </td>
-                </tr>
-              ) : (
-                paged.map((r) => (
-                  <tr key={r.id} className="border-b border-white/5 last:border-b-0">
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
-                        {r.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-white/75">{r.status}</td>
-                    <td className="px-4 py-3 text-white/85">{r.description}</td>
-                    <td className="px-4 py-3 text-right text-white/85">
-                      {formatMoney(r.amount, currency)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-white/70">
-                      {formatDateTime(r.date)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* pagination (SolCard-like bottom right) */}
-        <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-white/10 text-sm text-white/70">
-          <span className="mr-auto opacity-70">
-            Page {safePage} of {pages}
-          </span>
-
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition disabled:opacity-40"
-            disabled={safePage <= 1}
-          >
-            Previous
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(pages, p + 1))}
-            className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition disabled:opacity-40"
-            disabled={safePage >= pages}
-          >
-            Next
-          </button>
-        </div>
-      </Shell>
-    </div>
+    </DottedBackground>
   );
 }
