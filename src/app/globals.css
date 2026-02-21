@@ -6,3 +6,18 @@ html, body {
   padding: 0;
   margin: 0;
 }
+.dots-layer{
+  background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.dots-glow-layer{
+  background-image: radial-gradient(rgba(255,255,255,0.18) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+.dots-glow-layer:hover{
+  opacity: 0.22; /* ✅ très léger */
+}
