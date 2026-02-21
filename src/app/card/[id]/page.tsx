@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { DottedBackground } from "@/components/ui/background";
-import { TopNav } from "@/components/top-nav";
+import { TopNav } from "../../../components/top-nav";
 import { Shell } from "@/components/ui/card-shell";
 import { cards } from "@/lib/mock-data";
 import { formatMoney } from "@/lib/utils";
