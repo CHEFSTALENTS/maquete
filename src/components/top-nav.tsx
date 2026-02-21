@@ -15,12 +15,10 @@ export function TopNav() {
   return (
     <header className="w-full">
       <div className="w-full flex items-center justify-between px-6 py-4 border-b border-white/10">
-        {/* Left: Logo */}
         <Link href="/wallet" className="font-semibold tracking-wide">
-          <span className="opacity-90 underline underline-offset-4">SolCard</span>
+          <span className="opacity-95 underline underline-offset-4">SolCard</span>
         </Link>
 
-        {/* Center: Tabs */}
         <nav className="flex items-center gap-6 text-sm">
           {items.map((it) => {
             const active = pathname?.startsWith(it.href);
@@ -40,7 +38,6 @@ export function TopNav() {
           })}
         </nav>
 
-        {/* Right: Icons */}
         <div className="flex items-center gap-3">
           <button
             type="button"
