@@ -23,3 +23,46 @@ html, body {
 }
 .dots-glow-layer{ opacity:0; transition:opacity .25s ease; }
 .dotted-hover:hover .dots-glow-layer{ opacity:.22; }
+/* --- SolCard-like background --- */
+.sc-bg {
+  background: radial-gradient(900px 420px at 50% 120px, rgba(255,255,255,0.06), transparent 60%),
+              radial-gradient(1200px 600px at 50% -120px, rgba(255,255,255,0.035), transparent 60%),
+              #070b10;
+}
+
+.sc-dots {
+  background-image: radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.55;
+}
+
+.sc-dots-glow {
+  background-image: radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+.sc-hover:hover .sc-dots-glow {
+  opacity: 0.22; /* glow très léger */
+}
+
+/* --- Glass cards / slots --- */
+.sc-glass {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.04),
+    0 10px 30px rgba(0,0,0,0.35);
+  backdrop-filter: blur(10px);
+}
+
+.sc-slot {
+  border: 2px dashed rgba(255,255,255,0.20);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.sc-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+}
