@@ -31,40 +31,60 @@ function ActiveCardSlot({ cardId }: { cardId: string }) {
   const active = cards.find((c) => c.id === cardId) ?? cards[0];
 
   return (
-    <Shell className="p-6 col-span-1 aspect-[1.586/1] sc-glass">
-      <div className="text-sm opacity-85 mb-5 underline underline-offset-4">
-        SolCard
-      </div>
+    <div className="col-span-1 aspect-[1.586/1] relative overflow-hidden rounded-2xl sc-glass">
+      {/* ✅ fond interne + léger dégradé (comme SolCard) */}
+      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.035] via-white/[0.02] to-white/[0.015]" />
 
-      <div className="flex items-center gap-2 mb-5">
-        <div className="h-3 w-3 rounded-full bg-white/20 border border-white/10" />
-        <div className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10">
-          Slot1
+      {/* ✅ dots très subtils à l’intérieur */}
+      <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(rgba(255,255,255,0.10)_1px,transparent_1px)] [background-size:18px_18px]" />
+
+      {/* ✅ bordure interne */}
+      <div className="absolute inset-0 rounded-2xl border border-white/10" />
+
+      {/* ✅ padding global */}
+      <div className="relative h-full p-6 flex flex-col">
+        {/* top */}
+        <div className="text-sm opacity-90 underline underline-offset-4">
+          SolCard
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <div className="h-3 w-3 rounded-full bg-white/20 border border-white/10" />
+          <div className="text-xs px-3 py-1 rounded-full bg-white/10 border border-white/10">
+            Slot1
+          </div>
+        </div>
+
+        {/* ✅ ligne horizontale fine (signature du mock) */}
+        <div className="mt-auto">
+          <div className="h-px bg-white/12 opacity-70" />
+        </div>
+
+        {/* bottom band */}
+        <div className="pt-4 flex items-end justify-between">
+          <div>
+            <div className="text-2xl font-semibold leading-none">
+              Ending in {active.ending}
+            </div>
+
+            <div className="mt-4">
+              <Link
+                href={`/card/${active.id}`}
+                className="inline-flex text-sm opacity-80 hover:opacity-100 underline underline-offset-4"
+              >
+                Open card →
+              </Link>
+            </div>
+          </div>
+
+          {/* ✅ Mastercard petit, collé, discret */}
+          <div className="relative h-7 w-12 translate-y-1">
+            <div className="absolute right-3 top-0 h-7 w-7 rounded-full bg-orange-500/80" />
+            <div className="absolute right-0 top-0 h-7 w-7 rounded-full bg-yellow-400/70 mix-blend-screen" />
+          </div>
         </div>
       </div>
-
-      <div className="flex items-end justify-between">
-        <div className="text-xl font-semibold">Ending in {active.ending}</div>
-        {/* petit “mastercard-like” */}
-        <div className="relative h-7 w-12">
-          <div className="absolute right-2 top-0 h-7 w-7 rounded-full bg-orange-500/80" />
-          <div className="absolute right-0 top-0 h-7 w-7 rounded-full bg-yellow-400/70 mix-blend-screen" />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <Link
-          href={`/card/${active.id}`}
-          className="inline-flex text-sm opacity-80 hover:opacity-100 underline underline-offset-4"
-        >
-          Open card →
-        </Link>
-      </div>
-
-      <div className="mt-auto pt-7">
-        <div className="sc-divider opacity-70" />
-      </div>
-    </Shell>
+    </div>
   );
 }
 
