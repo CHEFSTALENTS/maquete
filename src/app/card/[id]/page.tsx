@@ -52,17 +52,43 @@ export default function CardPage({ params }: { params: { id: string } }) {
             ←
           </button>
 
-          {/* CARD (smaller, real card ratio) */}
-          <div className="relative w-full max-w-[520px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-            {/* subtle glass overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" />
+          {/* CARD (opaque, smaller, real ratio) */}
+          <div
+            className="
+              relative
+              w-full
+              max-w-[480px]
+              aspect-[1.586/1]
+              rounded-2xl
+              overflow-hidden
+              border border-white/10
+              bg-[#16181d]
+              shadow-[0_10px_40px_rgba(0,0,0,0.6)]
+            "
+          >
+            {/* subtle inner gradient (keeps it premium but opaque) */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/40" />
 
             {/* top badges */}
             <div className="absolute left-5 top-4 flex items-center gap-3">
               <div className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-xs">
                 Billing
               </div>
-              <div className="text-xs opacity-70">🙈</div>
+
+              {/* eye-off icon (no emoji) */}
+              <svg
+                className="w-4 h-4 opacity-60"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M3 3l18 18" />
+                <path d="M10.5 10.5a3 3 0 004.2 4.2" />
+                <path d="M6.7 6.7C5 8 3.8 9.6 3 12c2 5 7 8 9 8 1.3 0 2.7-.4 4-1" />
+                <path d="M17.3 17.3C19 16 20.2 14.4 21 12c-2-5-7-8-9-8-.7 0-1.4.1-2 .3" />
+              </svg>
             </div>
 
             <div className="absolute right-6 top-5 text-xl font-semibold tracking-wide">
@@ -70,23 +96,17 @@ export default function CardPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* chip */}
-            <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/50 border border-white/10" />
+            <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/60 border border-white/10" />
 
-            {/* blurred number (NOT dots) */}
-            <div className="absolute left-6 top-[108px] flex items-center gap-3">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="inline-block blur-[6px] opacity-70 select-none">
-                  1234
-                </span>
-                <span className="inline-block blur-[6px] opacity-70 select-none">
-                  5678
-                </span>
-                <span className="inline-block blur-[6px] opacity-70 select-none">
-                  9012
-                </span>
+            {/* blurred groups (NOT dots) + last4 big */}
+            <div className="absolute left-6 top-[108px] flex items-center gap-4">
+              <div className="flex items-center gap-3 text-sm tracking-widest">
+                <span className="blur-[6px] opacity-75 select-none">1234</span>
+                <span className="blur-[6px] opacity-75 select-none">5678</span>
+                <span className="blur-[6px] opacity-75 select-none">9012</span>
               </div>
 
-              <div className="text-2xl font-semibold tracking-wider">
+              <div className="text-3xl font-semibold tracking-wider">
                 {card.ending}
               </div>
             </div>
@@ -97,6 +117,7 @@ export default function CardPage({ params }: { params: { id: string } }) {
                 <div className="text-xs opacity-60">Card Holder</div>
                 <div className="text-base font-semibold">{card.holder}</div>
               </div>
+
               <div>
                 <div className="text-xs opacity-60">Expires</div>
                 <div className="text-base font-semibold">{card.expires}</div>
@@ -106,16 +127,14 @@ export default function CardPage({ params }: { params: { id: string } }) {
             {/* CVV blurred (visual only) */}
             <div className="absolute right-24 bottom-8 text-xs opacity-70">
               CVV{" "}
-              <span className="inline-block blur-[6px] opacity-70 select-none">
-                123
-              </span>
+              <span className="blur-[6px] opacity-75 select-none">123</span>
             </div>
 
             {/* mastercard */}
             <div className="absolute right-6 bottom-6">
               <div className="relative h-8 w-14">
-                <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-red-500/80" />
-                <div className="absolute left-4 top-0 h-8 w-8 rounded-full bg-yellow-400/80 mix-blend-screen" />
+                <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-red-500/90" />
+                <div className="absolute left-4 top-0 h-8 w-8 rounded-full bg-yellow-400/90 mix-blend-screen" />
               </div>
             </div>
           </div>
@@ -148,7 +167,7 @@ export default function CardPage({ params }: { params: { id: string } }) {
 
         {/* rules (light, opaque, pink accent) */}
         <div className="mt-6 max-w-[820px] mx-auto">
-          <div className="rounded-2xl border border-rose-200/40 bg-white/90 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.15)] overflow-hidden">
+          <div className="rounded-2xl border border-rose-200/40 bg-white text-black shadow-[0_10px_30px_rgba(0,0,0,0.25)] overflow-hidden">
             <div className="px-5 py-4">
               <div className="flex items-center gap-2 font-semibold text-rose-700">
                 <span className="text-rose-600">⚠️</span> Card Usage Rules
