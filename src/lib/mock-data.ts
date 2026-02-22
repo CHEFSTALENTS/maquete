@@ -23,7 +23,7 @@ export type Card = {
   topups: Transaction[];
 
   // ✅ NEW (FAKE / UI ONLY)
-  pan: string; // "5682 0078 9012 3035"
+  pan: string; // "5682 0078 9012 9831"
   cvv: string; // "892"
 };
 
@@ -32,14 +32,14 @@ export const cards: Card[] = [
     id: "solcard-2",
     name: "SolCard",
     ending: "3035",
-    holder: "MATHEW VERBICK",
+    holder: "ANNE THUMPSON",
     expires: "02/29",
-    balance: 3782.08,
-    depositUsed: 502.52,
+    balance: 51.08,
+    depositUsed: 0,
     depositLimit: 100000,
 
     // ✅ NEW (FAKE)
-    pan: "5682 0078 9012 3035",
+    pan: "5682 0078 9012 9831",
     cvv: "892",
 
     transactions: [
