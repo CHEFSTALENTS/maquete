@@ -44,8 +44,8 @@ export const cards: Card[] = [
       { id: "t10", type: "Auth", status: "Succeed", description: "Trip.com London GB", amount: 432.66, date: "2026-02-09T11:52:00Z" }
     ],
     topups: [
-      { id: "p1", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 3900, date: "2026-02-10T10:10:00Z" },
-      { id: "p2", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 5100, date: "2026-02-12T09:00:00Z" }
+      { id: "p1", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 3380, date: "2026-02-22T11:40:20Z" },
+      { id: "p2", type: "Auth", status: "Succeed", description: "Topup - Card Funding", amount: 51, date: "2026-02-12T09:28:31Z" }
     ]
   }
 ];
