@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "SolCard Mock",
+  title: "💳 My Wallet ",
   description: "Mock wallet UI for product demo video",
 };
 
