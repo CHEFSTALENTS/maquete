@@ -25,13 +25,13 @@ export type Card = {
 
 export const cards: Card[] = [
   {
-    id: "solcard-1",
+    id: "solcard-2",
     name: "SolCard",
-    ending: "8555",
-    holder: "JEROME GUYARCHE",
-    expires: "01/29",
-    balance: 8905.0,
-    depositUsed: 1189.32,
+    ending: "3035",
+    holder: "MATHEW VERBICK",
+    expires: "02/29",
+    balance: 3782.08,
+    depositUsed: 502.52,
     depositLimit: 100000,
     transactions: [
       { id: "t1", type: "Auth", status: "Succeed", description: "DELIVEROO PARIS 09 75FR", amount: 0.4, date: "2026-02-16T03:19:00Z" },
