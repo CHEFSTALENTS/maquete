@@ -3,7 +3,7 @@ import { cards as seedCards } from "@/lib/mock-data";
 
 const LS_KEY = "solcard_mock_cards_v1";
 
-type FeeEur = 150 | 250 | 400;
+export type ActivationFeeEur = 150 | 250 | 400;
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -11,6 +11,21 @@ function randInt(min: number, max: number) {
 
 function pad4(n: number) {
   return String(n).padStart(4, "0");
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function makeTopup(amount: number, whenIso = nowIso(), status: "Succeed" | "Failed" = "Succeed"): Transaction {
+  return {
+    id: `p-${Date.now()}-${randInt(100, 999)}`,
+    type: "Auth",
+    status,
+    description: status === "Succeed" ? "Topup - Card Funding" : "Deposit failed",
+    amount: Number(amount.toFixed(2)),
+    date: whenIso,
+  };
 }
 
 function makePan(last4: string) {
@@ -27,40 +42,9 @@ function makeExpiry() {
 }
 
 function randomHolder() {
-  const first = [
-    "Mathew",
-    "Julien",
-    "Lucas",
-    "Ethan",
-    "Maxime",
-    "Noah",
-    "Leo",
-    "Hugo",
-    "Nathan",
-    "Oscar",
-    "Mila",
-    "Lina",
-    "Emma",
-    "Chloe",
-    "Jade",
-  ];
-  const last = [
-    "Verbick",
-    "Dupont",
-    "Martin",
-    "Bernard",
-    "Moreau",
-    "Roux",
-    "Fournier",
-    "Girard",
-    "Lambert",
-    "Fontaine",
-    "Chevalier",
-    "Masson",
-  ];
-  return `${first[randInt(0, first.length - 1)]} ${
-    last[randInt(0, last.length - 1)]
-  }`.toUpperCase();
+  const first = ["Mathew", "Julien", "Lucas", "Ethan", "Maxime", "Noah", "Leo", "Hugo", "Nathan", "Oscar", "Mila", "Lina", "Emma", "Chloe", "Jade"];
+  const last = ["Verbick", "Dupont", "Martin", "Bernard", "Moreau", "Roux", "Fournier", "Girard", "Lambert", "Fontaine", "Chevalier", "Masson"];
+  return `${first[randInt(0, first.length - 1)]} ${last[randInt(0, last.length - 1)]}`.toUpperCase();
 }
 
 export function loadCards(): Card[] {
@@ -82,7 +66,6 @@ export function saveCards(cards: Card[]) {
 }
 
 export function generateSolanaAddress() {
-  // base58-like (looks like Solana, fake)
   const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const len = randInt(40, 44);
   let out = "";
@@ -90,45 +73,29 @@ export function generateSolanaAddress() {
   return out;
 }
 
-export function pickFeeEuro(): FeeEur {
-  const fees = [150, 250, 400] as const;
+export function pickActivationFeeEuro(): ActivationFeeEur {
+  const fees: ActivationFeeEur[] = [150, 250, 400];
   return fees[randInt(0, fees.length - 1)];
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function makeTopup(amount: number, whenIso = nowIso()): Transaction {
-  return {
-    id: `p-${Date.now()}-${randInt(100, 999)}`,
-    type: "Auth",
-    status: "Succeed",
-    description: "Topup - Card Funding",
-    amount: Number(amount.toFixed(2)),
-    date: whenIso,
-  };
-}
-
 /**
- * ✅ Preview generation (for the modal):
- * - returns address + selected fee
- * - returns a *draft* card (still balance 0 here; finalization happens in finalizeCardForSlot)
+ * ✅ STEP 1 — Generate card (DRAFT)
+ * - no balance
+ * - no topups
+ * - no transactions
+ * - isActive=false
  */
-export function createCardForSlot(slot: string, feeEur?: FeeEur) {
-  const chosenFee: FeeEur = feeEur ?? pickFeeEuro();
-
+export function createDraftCardForSlot(slot: string) {
   const last4 = pad4(randInt(0, 9999));
   const id = `solcard-${Date.now()}-${randInt(100, 999)}`;
-
-  const pan = makePan(last4);
 
   const card: Card = {
     id,
     name: "SolCard",
-    pan,
+    pan: makePan(last4),
     cvv: String(randInt(100, 999)),
     ending: last4,
+
     holder: randomHolder(),
     expires: makeExpiry(),
 
@@ -136,39 +103,50 @@ export function createCardForSlot(slot: string, feeEur?: FeeEur) {
     depositUsed: 0,
     depositLimit: 100000,
 
-    transactions: [], // ✅ must be empty for new cards
-    topups: [],
+    transactions: [], // ✅ empty
+    topups: [], // ✅ empty
 
-    issuanceFeeEur: chosenFee, // ✅ store the chosen fee
+    isActive: false, // ✅ draft
   };
 
   const solAddress = generateSolanaAddress();
-  return { card, feeEur: chosenFee, solAddress, slot };
+  return { card, solAddress, slot };
 }
 
 /**
- * ✅ Finalize creation at "Activate":
- * - gives initial balance between 40 and 60
- * - writes a topup entry at current date/time equal to that initial balance
+ * ✅ STEP 2 — Activate card (pay activation fee)
+ * - sets activationFeeEur
+ * - credits initial balance between 40-60
+ * - adds 1 topup = initial balance (now)
  * - keeps transactions empty
+ * - isActive=true
  */
-export function finalizeNewCard(card: Card): Card {
+export function activateCard(cards: Card[], cardId: string, feeEur: ActivationFeeEur): Card[] {
   const initial = randInt(40, 60);
   const topup = makeTopup(initial);
 
-  return {
-    ...card,
-    balance: Number(initial.toFixed(2)),
-    depositUsed: Number(initial.toFixed(2)),
-    transactions: [], // ✅ stays empty
-    topups: [topup], // ✅ initial topup = initial balance
-  };
+  return cards.map((c) => {
+    if (c.id !== cardId) return c;
+
+    // already active → keep state (idempotent)
+    if (c.isActive) return c;
+
+    return {
+      ...c,
+      isActive: true,
+      activationFeeEur: feeEur,
+      balance: Number(initial.toFixed(2)),
+      depositUsed: Number(initial.toFixed(2)),
+      transactions: [], // ✅ still empty
+      topups: [topup], // ✅ first funding
+    };
+  });
 }
 
 /**
- * ✅ Deposit flow for an existing card:
+ * ✅ STEP 3 — Deposit (already activated card)
  * - adds amount to balance
- * - adds topup row (date/time now)
+ * - adds topup row (now)
  * - transactions unchanged
  */
 export function depositToCard(cards: Card[], cardId: string, amount: number): Card[] {
@@ -180,6 +158,9 @@ export function depositToCard(cards: Card[], cardId: string, amount: number): Ca
   return cards.map((c) => {
     if (c.id !== cardId) return c;
 
+    // If card isn't active, refuse silently (UI will handle messaging)
+    if (!c.isActive) return c;
+
     const nextBalance = Number(((c.balance ?? 0) + amt).toFixed(2));
     const nextDepositUsed = Number(((c.depositUsed ?? 0) + amt).toFixed(2));
 
@@ -187,52 +168,6 @@ export function depositToCard(cards: Card[], cardId: string, amount: number): Ca
       ...c,
       balance: nextBalance,
       depositUsed: nextDepositUsed,
-      // ✅ transactions untouched
-      transactions: c.transactions ?? [],
-      // ✅ record topup
-      topups: [topup, ...(c.topups ?? [])],
-    };
-  });
-}
-
-/**
- * ✅ If you ever need "balance becomes EXACT deposit amount" (old behavior),
- * keep this helper. Not used for your current requirement.
- */
-export function applyTopupExactBalance(cards: Card[], cardId: string, amount: number): Card[] {
-  const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt < 0) return cards;
-
-  const topup = makeTopup(amt);
-
-  return cards.map((c) => {
-    if (c.id !== cardId) return c;
-    return {
-      ...c,
-      balance: Number(amt.toFixed(2)),
-      depositUsed: Number(amt.toFixed(2)),
-      transactions: c.transactions ?? [],
-      topups: [topup, ...(c.topups ?? [])],
-    };
-  });
-}
-export function recordFailedTopup(cards: Card[], cardId: string, amount: number): Card[] {
-  const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt <= 0) return cards;
-
-  const topup: Transaction = {
-    id: `p-fail-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
-    type: "Auth",
-    status: "Failed",
-    description: "Topup - Deposit failed (see details)",
-    amount: Number(amt.toFixed(2)),
-    date: new Date().toISOString(),
-  };
-
-  return cards.map((c) => {
-    if (c.id !== cardId) return c;
-    return {
-      ...c,
       transactions: c.transactions ?? [],
       topups: [topup, ...(c.topups ?? [])],
     };
