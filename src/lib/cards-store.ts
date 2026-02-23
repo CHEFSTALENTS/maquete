@@ -2,7 +2,12 @@ import type { Card, Transaction } from "@/lib/mock-data";
 import { cards as seedCards } from "@/lib/mock-data";
 
 const LS_KEY = "solcard_mock_cards_v1";
+
+// ✅ keep your existing type
 export type FeeEur = 150 | 250 | 400;
+
+// ✅ alias for older imports in slot/view.tsx
+export type ActivationFeeEur = FeeEur;
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -28,9 +33,40 @@ function makeExpiry() {
 }
 
 function randomHolder() {
-  const first = ["Mathew","Julien","Lucas","Ethan","Maxime","Noah","Leo","Hugo","Nathan","Oscar","Mila","Lina","Emma","Chloe","Jade"];
-  const last = ["Verbick","Dupont","Martin","Bernard","Moreau","Roux","Fournier","Girard","Lambert","Fontaine","Chevalier","Masson"];
-  return `${first[randInt(0, first.length - 1)]} ${last[randInt(0, last.length - 1)]}`.toUpperCase();
+  const first = [
+    "Mathew",
+    "Julien",
+    "Lucas",
+    "Ethan",
+    "Maxime",
+    "Noah",
+    "Leo",
+    "Hugo",
+    "Nathan",
+    "Oscar",
+    "Mila",
+    "Lina",
+    "Emma",
+    "Chloe",
+    "Jade",
+  ];
+  const last = [
+    "Verbick",
+    "Dupont",
+    "Martin",
+    "Bernard",
+    "Moreau",
+    "Roux",
+    "Fournier",
+    "Girard",
+    "Lambert",
+    "Fontaine",
+    "Chevalier",
+    "Masson",
+  ];
+  return `${first[randInt(0, first.length - 1)]} ${
+    last[randInt(0, last.length - 1)]
+  }`.toUpperCase();
 }
 
 export function loadCards(): Card[] {
@@ -74,7 +110,8 @@ function makeTopup(args: {
     id: `p-${Date.now()}-${randInt(100, 999)}`,
     type: "Auth",
     status: args.status,
-    description: args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
+    description:
+      args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
     amount: Number(args.amount.toFixed(2)),
     date: nowIso(),
     meta: { ref: args.ref, kind: "deposit", note: args.note },
@@ -120,7 +157,7 @@ export function createDraftCardForSlot(slot: string) {
 /**
  * Activate card (ALWAYS succeeds):
  * - initial balance 40..60
- * - initial topup created (not clickable or clickable, up to you)
+ * - initial topup created
  * - transactions stay empty
  */
 export function activateCard(cards: Card[], cardId: string, feeEur: FeeEur): Card[] {
