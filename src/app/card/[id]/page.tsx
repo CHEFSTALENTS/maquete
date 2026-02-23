@@ -533,9 +533,9 @@ export default function CardPage() {
             className="absolute inset-0 bg-black/90"
             onClick={() => setOverlayOpen(false)}
           />
-          <div className="relative w-full max-w-[820px]">
-            <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-6">
-              {/* top tiny toast-like line */}
+<div className="relative w-full max-w-[640px]">
+<div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_35px_100px_rgba(0,0,0,0.85)] px-8 py-10">
+  {/* top tiny toast-like line */}
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold">
                   {overlayKind === "success" ? "Success" : "Error"}
