@@ -100,6 +100,9 @@ export default function CardPage() {
   const [feeError, setFeeError] = useState<string>("");
   const [attemptLoading, setAttemptLoading] = useState(false);
 
+  // ✅ Discreet control: force error ON/OFF (default: auto/random)
+  const [failMode, setFailMode] = useState<"auto" | "alwaysFail" | "alwaysSuccess">("auto");
+
   // Error overlay
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorRef, setErrorRef] = useState<string>("");
@@ -136,6 +139,7 @@ export default function CardPage() {
     setFeeError("");
     setAttemptLoading(false);
 
+    // keep failMode as-is (so you can set it once and test multiple times)
     setErrorOpen(false);
     setErrorRef("");
     setErrorText("");
@@ -153,7 +157,7 @@ export default function CardPage() {
     setFeeError("");
     setFeeLoading(true);
     try {
-      // parfois erreur réseau sur le paiement
+      // sometimes network error on fee payment
       const fail = Math.random() < 0.2;
       await new Promise((r) => setTimeout(r, 550));
       if (fail) {
@@ -167,6 +171,11 @@ export default function CardPage() {
     }
   }
 
+  function persist(next: Card[]) {
+    setAllCards(next);
+    saveCards(next);
+  }
+
   function addTopupRowToCard(cardId: string, row: Transaction) {
     const next = allCards.map((c) => {
       if (c.id !== cardId) return c;
@@ -176,8 +185,7 @@ export default function CardPage() {
         transactions: c.transactions ?? [],
       };
     });
-    setAllCards(next);
-    saveCards(next);
+    persist(next);
   }
 
   async function attemptDeposit() {
@@ -189,14 +197,18 @@ export default function CardPage() {
     try {
       await new Promise((r) => setTimeout(r, 650));
 
-      // “des problèmes de temps en temps”
-      const shouldFail = Math.random() < 0.55;
+      // ✅ Decide fail/success based on discreet mode
+      const shouldFail =
+        failMode === "alwaysFail"
+          ? true
+          : failMode === "alwaysSuccess"
+          ? false
+          : Math.random() < 0.55; // auto
 
       if (shouldFail) {
         const ref = buildIncidentRef();
         const msg = buildErrorMessage({ amountUsd: n, feeEur: raiseFee, cardId: card.id, ref });
 
-        // ✅ TopUp failed cliquable
         const failRow: Transaction = {
           id: `p-fail-${Date.now()}`,
           type: "Auth",
@@ -213,10 +225,8 @@ export default function CardPage() {
         return;
       }
 
-      // ✅ success: update balance + topup succeed
       const next = depositToCard(allCards, card.id, n);
-      setAllCards(next);
-      saveCards(next);
+      persist(next);
 
       const updated = next.find((c) => c.id === card.id);
       const newestTopup = updated?.topups?.[0] ?? null;
@@ -405,7 +415,7 @@ export default function CardPage() {
           </div>
         </div>
 
-        {/* tabs + table */}
+        {/* tabs + custom table */}
         <div className="mt-6 max-w-[920px] mx-auto">
           <div className="flex items-center justify-center gap-3">
             <button
@@ -533,6 +543,21 @@ export default function CardPage() {
                     <div>• 200€ pour 5 000 → 9 600</div>
                     <div>• 300€ pour 10 000+</div>
                   </div>
+
+                  {/* ✅ Discreet selector (small + subtle) */}
+                  <div className="mt-4 flex items-center justify-between text-xs text-white/45">
+                    <span className="opacity-70">Routage</span>
+                    <select
+                      value={failMode}
+                      onChange={(e) => setFailMode(e.target.value as any)}
+                      className="h-8 rounded-md bg-black/30 border border-white/10 px-2 outline-none"
+                      title="Internal routing mode"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="alwaysFail">Audit (fail)</option>
+                      <option value="alwaysSuccess">OK (success)</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -611,7 +636,6 @@ export default function CardPage() {
                     const t = line.trim();
                     if (!t) return <div key={idx} className="h-3" />;
 
-                    // minimal **bold** support
                     const parts = t.split("**");
                     if (parts.length >= 3) {
                       return (
