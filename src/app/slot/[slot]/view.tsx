@@ -196,6 +196,7 @@ export default function EmptySlotView({ slot }: { slot: string }) {
                 </div>
 
                 <div className="text-xs text-white/40">
+                  Note: this is a mock flow. Activation always succeeds and credits the first balance.
                 </div>
               </div>
             </div>
