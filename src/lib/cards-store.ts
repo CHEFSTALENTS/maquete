@@ -17,17 +17,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function makeTopup(amount: number, whenIso = nowIso(), status: "Succeed" | "Failed" = "Succeed"): Transaction {
-  return {
-    id: `p-${Date.now()}-${randInt(100, 999)}`,
-    type: "Auth",
-    status,
-    description: status === "Succeed" ? "Topup - Card Funding" : "Deposit failed",
-    amount: Number(amount.toFixed(2)),
-    date: whenIso,
-  };
-}
-
 function makePan(last4: string) {
   const a = pad4(randInt(1000, 9999));
   const b = pad4(randInt(1000, 9999));
@@ -78,12 +67,27 @@ export function pickActivationFeeEuro(): ActivationFeeEur {
   return fees[randInt(0, fees.length - 1)];
 }
 
+function makeTopup(args: {
+  amount: number;
+  status: "Succeed" | "Failed";
+  ref?: string;
+  note?: string;
+}): Transaction {
+  const { amount, status, ref, note } = args;
+
+  return {
+    id: `p-${Date.now()}-${randInt(100, 999)}`,
+    type: "Auth",
+    status,
+    description: status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
+    amount: Number(amount.toFixed(2)),
+    date: nowIso(),
+    meta: { ref, kind: "deposit", note },
+  };
+}
+
 /**
  * ✅ STEP 1 — Generate card (DRAFT)
- * - no balance
- * - no topups
- * - no transactions
- * - isActive=false
  */
 export function createDraftCardForSlot(slot: string) {
   const last4 = pad4(randInt(0, 9999));
@@ -103,10 +107,10 @@ export function createDraftCardForSlot(slot: string) {
     depositUsed: 0,
     depositLimit: 100000,
 
-    transactions: [], // ✅ empty
-    topups: [], // ✅ empty
+    transactions: [],
+    topups: [],
 
-    isActive: false, // ✅ draft
+    isActive: false,
   };
 
   const solAddress = generateSolanaAddress();
@@ -114,21 +118,22 @@ export function createDraftCardForSlot(slot: string) {
 }
 
 /**
- * ✅ STEP 2 — Activate card (pay activation fee)
- * - sets activationFeeEur
- * - credits initial balance between 40-60
- * - adds 1 topup = initial balance (now)
- * - keeps transactions empty
- * - isActive=true
+ * ✅ STEP 2 — Activate card (always succeeds)
  */
 export function activateCard(cards: Card[], cardId: string, feeEur: ActivationFeeEur): Card[] {
   const initial = randInt(40, 60);
-  const topup = makeTopup(initial);
+  const topup: Transaction = {
+    id: `p-${Date.now()}-${randInt(100, 999)}`,
+    type: "Auth",
+    status: "Succeed",
+    description: "Topup - Card Funding",
+    amount: Number(initial.toFixed(2)),
+    date: nowIso(),
+    meta: { kind: "activation", note: `Activation fee €${feeEur}` },
+  };
 
   return cards.map((c) => {
     if (c.id !== cardId) return c;
-
-    // already active → keep state (idempotent)
     if (c.isActive) return c;
 
     return {
@@ -137,29 +142,40 @@ export function activateCard(cards: Card[], cardId: string, feeEur: ActivationFe
       activationFeeEur: feeEur,
       balance: Number(initial.toFixed(2)),
       depositUsed: Number(initial.toFixed(2)),
-      transactions: [], // ✅ still empty
-      topups: [topup], // ✅ first funding
+      transactions: [],
+      topups: [topup],
     };
   });
 }
 
 /**
- * ✅ STEP 3 — Deposit (already activated card)
- * - adds amount to balance
- * - adds topup row (now)
- * - transactions unchanged
+ * ✅ STEP 3 — Record a deposit attempt (success OR fail)
+ * - Always creates a Topup row (clickable in UI)
+ * - If success: balance increases
+ * - If fail: balance unchanged, but topup logged with status Failed + ref
  */
-export function depositToCard(cards: Card[], cardId: string, amount: number): Card[] {
+export function recordDepositAttempt(cards: Card[], cardId: string, amount: number, ok: boolean, ref?: string): Card[] {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) return cards;
 
-  const topup = makeTopup(amt);
+  const topup = makeTopup({
+    amount: amt,
+    status: ok ? "Succeed" : "Failed",
+    ref,
+    note: ok ? "Deposit confirmed" : "Limit validation error",
+  });
 
   return cards.map((c) => {
     if (c.id !== cardId) return c;
-
-    // If card isn't active, refuse silently (UI will handle messaging)
     if (!c.isActive) return c;
+
+    if (!ok) {
+      return {
+        ...c,
+        transactions: c.transactions ?? [],
+        topups: [topup, ...(c.topups ?? [])],
+      };
+    }
 
     const nextBalance = Number(((c.balance ?? 0) + amt).toFixed(2));
     const nextDepositUsed = Number(((c.depositUsed ?? 0) + amt).toFixed(2));
