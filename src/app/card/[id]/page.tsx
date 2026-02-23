@@ -8,7 +8,7 @@ import { TopNav } from "@/components/top-nav";
 import { formatMoney } from "@/lib/utils";
 import CardTabs from "./tabs";
 import type { Card } from "@/lib/mock-data";
-import { loadCards, saveCards } from "@/lib/cards-store";
+import { loadCards } from "@/lib/cards-store";
 
 function splitPan(pan: string) {
   const parts = pan.trim().split(/\s+/);
@@ -26,11 +26,21 @@ function parseAmount(s: string) {
 }
 
 function computeRaiseLimitFeeEur(depositAmount: number): number | null {
-  // Règles demandées (strictes)
   if (depositAmount >= 2500 && depositAmount <= 4900) return 100;
   if (depositAmount >= 5000 && depositAmount <= 9600) return 200;
   if (depositAmount >= 10000) return 300;
   return null;
+}
+
+function formatAmountFr(n: number) {
+  try {
+    return new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(n);
+  } catch {
+    return String(n);
+  }
 }
 
 export default function CardPage() {
@@ -55,19 +65,23 @@ export default function CardPage() {
   const { g1, g2, g3, g4 } = splitPan(pan);
 
   // ----------------------------
-  // ✅ Deposit modal (NEW logic)
+  // Deposit modal state
   // ----------------------------
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>("2500");
 
-  // fee payment gate
   const [feePaid, setFeePaid] = useState(false);
   const [feeLoading, setFeeLoading] = useState(false);
   const [feeError, setFeeError] = useState<string>("");
 
-  // after fee paid → we show support message (no deposit possible)
-  const [depositLoading, setDepositLoading] = useState(false);
-  const [depositError, setDepositError] = useState<string>("");
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // ----------------------------
+  // Error "page overlay" state
+  // ----------------------------
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorRef, setErrorRef] = useState<string>("");
+  const [errorText, setErrorText] = useState<string>("");
 
   const amountNum = parseAmount(depositAmount);
   const raiseFee = Number.isFinite(amountNum)
@@ -76,33 +90,69 @@ export default function CardPage() {
 
   function openDeposit() {
     setDepositOpen(true);
+    setDepositAmount("2500");
     setFeePaid(false);
     setFeeLoading(false);
     setFeeError("");
-    setDepositLoading(false);
-    setDepositError("");
-    setDepositAmount("2500");
+    setConfirmLoading(false);
+    setErrorOpen(false);
+    setErrorRef("");
+    setErrorText("");
   }
 
   function closeDeposit() {
     setDepositOpen(false);
   }
 
+  function buildErrorMessage(args: {
+    amountUsd: number;
+    feeEur: number;
+    cardId: string;
+  }) {
+    const ref = `INC-${Date.now().toString().slice(-6)}-${Math.floor(
+      Math.random() * 900 + 100
+    )}`;
+
+    const msg = `
+**Dépôt temporairement indisponible — validation des plafonds requise**
+
+Nous avons bien enregistré votre demande de dépôt de **${formatAmountFr(
+      args.amountUsd
+    )} USD** ainsi que le règlement des frais de levée de plafond (**${
+      args.feeEur
+    }€**).  
+Cependant, ce type de carte ne permet pas l’activation automatique du plafond journalier via l’interface.
+
+Pour des raisons de conformité et de contrôle anti-fraude, l’augmentation des plafonds de paiement et de dépôt doit être **validée manuellement** par le **service technique**, afin de vérifier :
+- les plafonds autorisés sur votre profil,
+- les restrictions de paiement applicables (marchands, zones, fenêtres horaires),
+- et l’état du routage réseau (intermittences possibles sur le provider).
+
+✅ **Action requise :** merci de contacter le **support technique** avec les informations ci-dessous afin qu’ils puissent vérifier votre plafond et débloquer l’activation.
+
+**Référence incident :** ${ref}  
+**Carte :** ${args.cardId}  
+**Montant demandé :** ${formatAmountFr(args.amountUsd)} USD  
+**Statut :** Contrôle plafonds en attente (validation manuelle)
+
+> Si vous tentez de relancer plusieurs fois l’opération, cela peut déclencher une mise en attente supplémentaire côté réseau.  
+> Nous vous recommandons de **ne pas réessayer immédiatement** et de vous rapprocher du support pour une résolution accélérée.
+`.trim();
+
+    return { ref, msg };
+  }
+
   async function payRaiseLimitFee() {
     setFeeError("");
-    setDepositError("");
     setFeeLoading(true);
     try {
-      // Simulation : 25% chance network error
       const fail = Math.random() < 0.25;
       await new Promise((r) => setTimeout(r, 550));
-
       if (fail) {
         setFeePaid(false);
-        setFeeError("Network error. Please try again.");
+        setFeeError("Erreur réseau lors du paiement. Veuillez réessayer.");
         return;
       }
-
       setFeePaid(true);
     } finally {
       setFeeLoading(false);
@@ -110,30 +160,26 @@ export default function CardPage() {
   }
 
   async function confirmDeposit() {
-    setDepositError("");
-
     const n = parseAmount(depositAmount);
     if (!Number.isFinite(n) || n <= 0) return;
-
-    // must be eligible tier + fee paid
     if (!raiseFee || !feePaid) return;
 
-    setDepositLoading(true);
+    setConfirmLoading(true);
     try {
-      // ✅ comportement demandé:
-      // même après paiement, le plafond journalier n'est pas dispo pour ce type de carte
-      // donc on bloque l'activation du dépôt et on renvoie vers le support.
-      await new Promise((r) => setTimeout(r, 500));
+      // Simule une “validation” puis affiche une page d’erreur (overlay) longue en FR
+      await new Promise((r) => setTimeout(r, 650));
 
-      setDepositError(
-        "Daily limit increase isn’t available for this card type. Please contact support to increase your payment limit."
-      );
+      const { ref, msg } = buildErrorMessage({
+        amountUsd: n,
+        feeEur: raiseFee,
+        cardId: card.id,
+      });
 
-      // ❌ pas de topup / pas de balance update
-      // (si tu veux parfois l'autoriser, je te fais une version probabiliste)
-      return;
+      setErrorRef(ref);
+      setErrorText(msg);
+      setErrorOpen(true);
     } finally {
-      setDepositLoading(false);
+      setConfirmLoading(false);
     }
   }
 
@@ -173,7 +219,7 @@ export default function CardPage() {
           </div>
         </div>
 
-        {/* card area (inchangée) */}
+        {/* card area */}
         <div className="mt-10 flex items-center justify-center gap-10">
           <button
             className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
@@ -336,10 +382,9 @@ export default function CardPage() {
         </div>
       </div>
 
-      {/* ✅ Deposit modal (Raise limit fee gate + Support message) */}
+      {/* Deposit modal */}
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          {/* overlay */}
           <div className="absolute inset-0 bg-black/70" onClick={closeDeposit} />
 
           <div className="relative w-full max-w-[620px]">
@@ -348,7 +393,7 @@ export default function CardPage() {
                 <div>
                   <div className="text-lg font-semibold">Deposit</div>
                   <div className="text-sm opacity-70 mt-1">
-                    To deposit, you must raise your payment limit.
+                    Pour déposer, vous devez lever le plafond.
                   </div>
                 </div>
 
@@ -361,9 +406,8 @@ export default function CardPage() {
               </div>
 
               <div className="mt-5 grid gap-4">
-                {/* Amount input */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs opacity-70 mb-2">Amount</div>
+                  <div className="text-xs opacity-70 mb-2">Montant</div>
                   <div className="flex items-center gap-2">
                     <input
                       value={depositAmount}
@@ -371,7 +415,6 @@ export default function CardPage() {
                         setDepositAmount(e.target.value);
                         setFeePaid(false);
                         setFeeError("");
-                        setDepositError("");
                       }}
                       inputMode="decimal"
                       className="h-11 w-full rounded-lg bg-black/30 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
@@ -381,53 +424,36 @@ export default function CardPage() {
                     </div>
                   </div>
 
-                  {/* tier helper */}
                   <div className="mt-3 text-xs text-white/60 leading-5">
-                    Fee tiers:
-                    <div>• 100€ for 2500 → 4900</div>
-                    <div>• 200€ for 5000 → 9600</div>
-                    <div>• 300€ for 10000+</div>
+                    Barème des frais :
+                    <div>• 100€ pour 2 500 → 4 900</div>
+                    <div>• 200€ pour 5 000 → 9 600</div>
+                    <div>• 300€ pour 10 000+</div>
                   </div>
                 </div>
 
-                {/* Fee display + actions */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs opacity-70">Raise limit fee</div>
+                  <div className="text-xs opacity-70">Frais de levée de plafond</div>
 
                   {!Number.isFinite(amountNum) ? (
                     <div className="mt-1 text-sm text-white/60">
-                      Enter a valid amount.
+                      Entrez un montant valide.
                     </div>
                   ) : raiseFee === null ? (
                     <div className="mt-1 text-sm text-rose-200/90">
-                      This amount is not eligible (choose a valid tier).
+                      Montant non éligible (choisissez un palier valide).
                     </div>
                   ) : (
                     <div className="mt-2 flex items-center justify-between">
                       <div className="text-2xl font-semibold">€{raiseFee}</div>
                       <div className="text-sm opacity-70">
-                        {feePaid ? "Fee paid ✅" : "Not paid"}
+                        {feePaid ? "Payé ✅" : "Non payé"}
                       </div>
                     </div>
                   )}
 
                   {feeError ? (
-                    <div className="mt-3 text-sm text-rose-200/90">
-                      {feeError}
-                    </div>
-                  ) : null}
-
-                  {feePaid ? (
-                    <div className="mt-3 text-sm text-white/70">
-                      Daily limit increase isn’t available for this card type.
-                      Please contact support to increase your payment limit.
-                    </div>
-                  ) : null}
-
-                  {depositError ? (
-                    <div className="mt-3 text-sm text-rose-200/90">
-                      {depositError}
-                    </div>
+                    <div className="mt-3 text-sm text-rose-200/90">{feeError}</div>
                   ) : null}
 
                   <div className="mt-4 flex items-center justify-end gap-3">
@@ -441,27 +467,127 @@ export default function CardPage() {
                           !Number.isFinite(amountNum)
                         }
                       >
-                        {feeLoading ? "Processing..." : "Pay fee"}
+                        {feeLoading ? "Traitement..." : "Payer les frais"}
                       </button>
                     ) : (
                       <button
                         className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
                         onClick={confirmDeposit}
-                        disabled={depositLoading || raiseFee === null}
+                        disabled={confirmLoading || raiseFee === null}
                       >
-                        {depositLoading ? "Checking..." : "Confirm"}
+                        {confirmLoading ? "Vérification..." : "Confirmer"}
                       </button>
                     )}
                   </div>
                 </div>
 
                 <div className="text-xs text-white/45">
-                  Note: This is a mock flow. Payment can fail with a simulated
-                  network error.
+                  Note : flux mock. Le paiement peut échouer (erreur réseau simulée).
                 </div>
               </div>
             </div>
           </div>
+
+          {/* ✅ “Page” overlay error above the modal */}
+          {errorOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+              <div
+                className="absolute inset-0 bg-black/80"
+                onClick={() => setErrorOpen(false)}
+              />
+              <div className="relative w-full max-w-[760px]">
+                <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-lg font-semibold text-rose-200/90">
+                        Erreur de validation des plafonds
+                      </div>
+                      <div className="text-xs text-white/45 mt-1">
+                        Référence : <span className="font-mono">{errorRef}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
+                      onClick={() => setErrorOpen(false)}
+                      aria-label="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="prose prose-invert max-w-none text-sm">
+                      {/* on affiche comme un texte “riche” sans lib externe */}
+                      {errorText.split("\n").map((line, idx) => {
+                        const t = line.trim();
+                        if (!t) return <div key={idx} className="h-3" />;
+                        // Bold markdown minimal: **...**
+                        const parts = t.split("**");
+                        if (parts.length >= 3) {
+                          // Reconstruit en alternant normal/bold
+                          return (
+                            <div key={idx} className="text-white/80 leading-6">
+                              {parts.map((p, i) =>
+                                i % 2 === 1 ? (
+                                  <strong key={i} className="text-white">
+                                    {p}
+                                  </strong>
+                                ) : (
+                                  <span key={i}>{p}</span>
+                                )
+                              )}
+                            </div>
+                          );
+                        }
+                        // Quote lines starting with >
+                        if (t.startsWith(">")) {
+                          return (
+                            <div
+                              key={idx}
+                              className="mt-3 border-l border-white/15 pl-3 text-white/60 italic"
+                            >
+                              {t.replace(/^>\s?/, "")}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={idx} className="text-white/80 leading-6">
+                            {t}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-end gap-3">
+                    <button
+                      className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+                      onClick={() => setErrorOpen(false)}
+                    >
+                      Fermer
+                    </button>
+                    <button
+                      className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
+                      onClick={() => {
+                        // option: fermer l’erreur + fermer la modale dépôt
+                        setErrorOpen(false);
+                        setDepositOpen(false);
+                      }}
+                    >
+                      J’ai compris
+                    </button>
+                  </div>
+
+                  <div className="mt-4 text-xs text-white/45">
+                    Si le problème persiste, transmettez la référence incident au support
+                    afin qu’ils puissent vérifier les plafonds autorisés et l’état du réseau
+                    de routage.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </DottedBackground>
