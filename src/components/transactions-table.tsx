@@ -9,10 +9,12 @@ export function TransactionsTable({
   rows,
   currency = "USD",
   emptyText = "No transactions.",
+  onStatusClick,
 }: {
   rows: Transaction[];
   currency?: string;
   emptyText?: string;
+  onStatusClick?: (row: Transaction) => void;
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -36,7 +38,7 @@ export function TransactionsTable({
 
   return (
     <div className="w-full">
-      {/* controls row (SolCard-like) */}
+      {/* controls row */}
       <div className="flex items-center justify-between gap-4 mb-3">
         <input
           value={q}
@@ -79,37 +81,54 @@ export function TransactionsTable({
             <tbody>
               {paged.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-10 text-center text-white/55"
-                  >
+                  <td colSpan={5} className="px-4 py-10 text-center text-white/55">
                     {emptyText}
                   </td>
                 </tr>
               ) : (
-                paged.map((r) => (
-                  <tr key={r.id} className="border-b border-white/5 last:border-b-0">
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
-                        {r.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-white/75">{r.status}</td>
-                    <td className="px-4 py-3 text-white/85">{r.description}</td>
-                    <td className="px-4 py-3 text-right text-white/85">
-                      {formatMoney(r.amount, currency)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-white/70">
-                      {formatDateTime(r.date)}
-                    </td>
-                  </tr>
-                ))
+                paged.map((r) => {
+                  const isClickable = r.status === "Failed" && typeof onStatusClick === "function";
+                  return (
+                    <tr key={r.id} className="border-b border-white/5 last:border-b-0">
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
+                          {r.type}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {isClickable ? (
+                          <button
+                            type="button"
+                            onClick={() => onStatusClick(r)}
+                            className="text-rose-200/90 underline underline-offset-2 hover:opacity-100 opacity-90 transition"
+                            title="Voir le détail"
+                          >
+                            {r.status}
+                          </button>
+                        ) : (
+                          <span className={r.status === "Failed" ? "text-rose-200/90" : "text-white/75"}>
+                            {r.status}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-white/85">{r.description}</td>
+                      <td className="px-4 py-3 text-right text-white/85">
+                        {formatMoney(r.amount, currency)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-white/70">
+                        {formatDateTime(r.date)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* pagination (SolCard-like bottom right) */}
+        {/* pagination */}
         <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-white/10 text-sm text-white/70">
           <span className="mr-auto opacity-70">
             Page {safePage} of {pages}
