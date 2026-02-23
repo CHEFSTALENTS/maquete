@@ -95,7 +95,31 @@ export function TransactionsTable({
                           {r.type}
                         </span>
                       </td>
-
+<td className="px-4 py-3 text-white/85">
+  {r?.meta?.ref ? (
+    <button
+      type="button"
+      onClick={() => {
+        window.dispatchEvent(
+          new CustomEvent("solcard:topup:open", {
+            detail: {
+              ref: r.meta?.ref,
+              status: r.status,
+              amount: r.amount,
+              date: r.date,
+              note: r.meta?.note ?? "",
+            },
+          })
+        );
+      }}
+      className="underline underline-offset-4 hover:opacity-90"
+    >
+      {r.description}
+    </button>
+  ) : (
+    r.description
+  )}
+</td>
                       <td className="px-4 py-3">
                         {isClickable ? (
                           <button
