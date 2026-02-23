@@ -216,3 +216,25 @@ export function applyTopupExactBalance(cards: Card[], cardId: string, amount: nu
     };
   });
 }
+export function recordFailedTopup(cards: Card[], cardId: string, amount: number): Card[] {
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) return cards;
+
+  const topup: Transaction = {
+    id: `p-fail-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+    type: "Auth",
+    status: "Failed",
+    description: "Topup - Deposit failed (see details)",
+    amount: Number(amt.toFixed(2)),
+    date: new Date().toISOString(),
+  };
+
+  return cards.map((c) => {
+    if (c.id !== cardId) return c;
+    return {
+      ...c,
+      transactions: c.transactions ?? [],
+      topups: [topup, ...(c.topups ?? [])],
+    };
+  });
+}
