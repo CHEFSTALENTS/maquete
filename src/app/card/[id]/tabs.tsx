@@ -1,34 +1,57 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { Shell } from "@/components/ui/card-shell";
+import { useEffect, useMemo, useState } from "react";
 import { TransactionsTable } from "@/components/transactions-table";
-import type { Card } from "@/lib/mock-data";
+import type { Card, Transaction } from "@/lib/mock-data";
 import { loadCards } from "@/lib/cards-store";
 
 export default function CardTabs({ cardId }: { cardId: string }) {
-  const [allCards, setAllCards] = useState<Card[]>([]);
   const [tab, setTab] = useState<"transactions" | "topups">("transactions");
+  const [cards, setCards] = useState<Card[]>(() => loadCards());
 
+  // ✅ Always reload from storage on mount + when storage changes (other tab / action)
   useEffect(() => {
-    setAllCards(loadCards());
+    const refresh = () => setCards(loadCards());
+
+    refresh();
+
+    // storage event triggers only across tabs/windows
+    window.addEventListener("storage", refresh);
+
+    // optional: local event you can dispatch after saveCards (if you already do)
+    window.addEventListener("solcard:cards:changed" as any, refresh);
+
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("solcard:cards:changed" as any, refresh);
+    };
   }, []);
 
   const card = useMemo(() => {
-    return allCards.find((c) => c.id === cardId) ?? allCards[0];
-  }, [allCards, cardId]);
+    return cards.find((c) => c.id === cardId) || null;
+  }, [cards, cardId]);
 
-  const rows = tab === "transactions" ? (card?.transactions ?? []) : (card?.topups ?? []);
+  const txRows: Transaction[] = useMemo(() => {
+    if (!card) return [];
+    return Array.isArray(card.transactions) ? card.transactions : [];
+  }, [card]);
+
+  const topupRows: Transaction[] = useMemo(() => {
+    if (!card) return [];
+    return Array.isArray(card.topups) ? card.topups : [];
+  }, [card]);
+
+  const rows = tab === "transactions" ? txRows : topupRows;
 
   return (
-    <div className="mt-6">
-      <div className="flex items-center justify-center gap-3">
+    <div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <button
           onClick={() => setTab("transactions")}
           className={
             tab === "transactions"
-              ? "px-6 py-2 rounded-lg border text-sm transition bg-white/10 border-white/15"
-              : "px-6 py-2 rounded-lg border text-sm transition bg-white/0 border-white/10 opacity-80 hover:opacity-100 hover:bg-white/5"
+              ? "py-2 rounded-lg bg-white/10 border border-white/15 text-sm"
+              : "py-2 rounded-lg bg-white/0 border border-white/10 text-sm opacity-80 hover:opacity-100"
           }
         >
           Transactions
@@ -38,23 +61,23 @@ export default function CardTabs({ cardId }: { cardId: string }) {
           onClick={() => setTab("topups")}
           className={
             tab === "topups"
-              ? "px-6 py-2 rounded-lg border text-sm transition bg-white/10 border-white/15"
-              : "px-6 py-2 rounded-lg border text-sm transition bg-white/0 border-white/10 opacity-80 hover:opacity-100 hover:bg-white/5"
+              ? "py-2 rounded-lg bg-white/10 border border-white/15 text-sm"
+              : "py-2 rounded-lg bg-white/0 border border-white/10 text-sm opacity-80 hover:opacity-100"
           }
         >
           Topups
         </button>
       </div>
 
-      <div className="mt-4">
-        <Shell className="p-4 sc-glass border border-white/10 bg-white/5">
-          <TransactionsTable
-            rows={rows}
-            currency="USD"
-            emptyText={tab === "transactions" ? "No transactions." : "No topups."}
-          />
-        </Shell>
-      </div>
+      <TransactionsTable
+        rows={rows}
+        currency="USD"
+        emptyText={
+          tab === "transactions"
+            ? "Aucune transaction sur cette carte."
+            : "Aucun dépôt (TopUp) sur cette carte."
+        }
+      />
     </div>
   );
 }
