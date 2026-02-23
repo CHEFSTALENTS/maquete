@@ -1,4 +1,3 @@
-// ... tes imports existants
 "use client";
 
 import Link from "next/link";
@@ -9,7 +8,7 @@ import { TopNav } from "@/components/top-nav";
 import { formatMoney } from "@/lib/utils";
 import CardTabs from "./tabs";
 import type { Card } from "@/lib/mock-data";
-import { loadCards, saveCards, depositToCard } from "@/lib/cards-store";
+import { loadCards, saveCards } from "@/lib/cards-store";
 
 function splitPan(pan: string) {
   const parts = pan.trim().split(/\s+/);
@@ -66,11 +65,14 @@ export default function CardPage() {
   const [feeLoading, setFeeLoading] = useState(false);
   const [feeError, setFeeError] = useState<string>("");
 
-  // final deposit step
+  // after fee paid → we show support message (no deposit possible)
   const [depositLoading, setDepositLoading] = useState(false);
+  const [depositError, setDepositError] = useState<string>("");
 
   const amountNum = parseAmount(depositAmount);
-  const raiseFee = Number.isFinite(amountNum) ? computeRaiseLimitFeeEur(amountNum) : null;
+  const raiseFee = Number.isFinite(amountNum)
+    ? computeRaiseLimitFeeEur(amountNum)
+    : null;
 
   function openDeposit() {
     setDepositOpen(true);
@@ -78,6 +80,7 @@ export default function CardPage() {
     setFeeLoading(false);
     setFeeError("");
     setDepositLoading(false);
+    setDepositError("");
     setDepositAmount("2500");
   }
 
@@ -87,6 +90,7 @@ export default function CardPage() {
 
   async function payRaiseLimitFee() {
     setFeeError("");
+    setDepositError("");
     setFeeLoading(true);
     try {
       // Simulation : 25% chance network error
@@ -106,6 +110,8 @@ export default function CardPage() {
   }
 
   async function confirmDeposit() {
+    setDepositError("");
+
     const n = parseAmount(depositAmount);
     if (!Number.isFinite(n) || n <= 0) return;
 
@@ -114,10 +120,18 @@ export default function CardPage() {
 
     setDepositLoading(true);
     try {
-      const next = depositToCard(allCards, card.id, n);
-      setAllCards(next);
-      saveCards(next);
-      setDepositOpen(false);
+      // ✅ comportement demandé:
+      // même après paiement, le plafond journalier n'est pas dispo pour ce type de carte
+      // donc on bloque l'activation du dépôt et on renvoie vers le support.
+      await new Promise((r) => setTimeout(r, 500));
+
+      setDepositError(
+        "Daily limit increase isn’t available for this card type. Please contact support to increase your payment limit."
+      );
+
+      // ❌ pas de topup / pas de balance update
+      // (si tu veux parfois l'autoriser, je te fais une version probabiliste)
+      return;
     } finally {
       setDepositLoading(false);
     }
@@ -190,12 +204,24 @@ export default function CardPage() {
                 title={revealed ? "Hide" : "Show"}
               >
                 {revealed ? (
-                  <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
+                  <svg
+                    className="w-4 h-4 opacity-80"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z" />
                     <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
                   </svg>
                 ) : (
-                  <svg className="w-4 h-4 opacity-60" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
+                  <svg
+                    className="w-4 h-4 opacity-60"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M3 3l18 18" />
                     <path d="M10.5 10.5a3 3 0 004.2 4.2" />
                     <path d="M6.7 6.7C5 8 3.8 9.6 3 12c2 5 7 8 9 8 1.3 0 2.7-.4 4-1" />
@@ -213,9 +239,33 @@ export default function CardPage() {
 
             <div className="absolute left-6 top-[108px] flex items-center gap-4">
               <div className="flex items-center gap-3 text-sm tracking-widest">
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g1}</span>
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g2}</span>
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g3}</span>
+                <span
+                  className={
+                    revealed
+                      ? "opacity-90"
+                      : "blur-[6px] opacity-75 select-none"
+                  }
+                >
+                  {g1}
+                </span>
+                <span
+                  className={
+                    revealed
+                      ? "opacity-90"
+                      : "blur-[6px] opacity-75 select-none"
+                  }
+                >
+                  {g2}
+                </span>
+                <span
+                  className={
+                    revealed
+                      ? "opacity-90"
+                      : "blur-[6px] opacity-75 select-none"
+                  }
+                >
+                  {g3}
+                </span>
               </div>
 
               <div className="text-3xl font-semibold tracking-wider">{g4}</div>
@@ -235,7 +285,13 @@ export default function CardPage() {
 
             <div className="absolute right-24 bottom-8 text-xs opacity-70">
               CVV{" "}
-              <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>
+              <span
+                className={
+                  revealed
+                    ? "opacity-85"
+                    : "blur-[6px] opacity-75 select-none"
+                }
+              >
                 {cvv}
               </span>
             </div>
@@ -261,12 +317,16 @@ export default function CardPage() {
           <div className="flex items-center justify-between text-sm opacity-85 mb-2">
             <div>{pct}% of your monthly deposit limit used</div>
             <div>
-              {formatMoney(card.depositUsed, "USD")} / {formatMoney(card.depositLimit, "USD")}
+              {formatMoney(card.depositUsed, "USD")} /{" "}
+              {formatMoney(card.depositLimit, "USD")}
             </div>
           </div>
 
           <div className="h-[6px] rounded-full bg-white/15 overflow-hidden">
-            <div className="h-full bg-white/70" style={{ width: `${Math.min(100, pct)}%` }} />
+            <div
+              className="h-full bg-white/70"
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
           </div>
         </div>
 
@@ -276,7 +336,7 @@ export default function CardPage() {
         </div>
       </div>
 
-      {/* ✅ Deposit modal (Raise limit fee gate) */}
+      {/* ✅ Deposit modal (Raise limit fee gate + Support message) */}
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
           {/* overlay */}
@@ -288,7 +348,7 @@ export default function CardPage() {
                 <div>
                   <div className="text-lg font-semibold">Deposit</div>
                   <div className="text-sm opacity-70 mt-1">
-                    To deposit, you must raise your limit.
+                    To deposit, you must raise your payment limit.
                   </div>
                 </div>
 
@@ -311,6 +371,7 @@ export default function CardPage() {
                         setDepositAmount(e.target.value);
                         setFeePaid(false);
                         setFeeError("");
+                        setDepositError("");
                       }}
                       inputMode="decimal"
                       className="h-11 w-full rounded-lg bg-black/30 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
@@ -339,7 +400,7 @@ export default function CardPage() {
                     </div>
                   ) : raiseFee === null ? (
                     <div className="mt-1 text-sm text-rose-200/90">
-                      This amount is not eligible for a deposit (choose a valid tier).
+                      This amount is not eligible (choose a valid tier).
                     </div>
                   ) : (
                     <div className="mt-2 flex items-center justify-between">
@@ -356,12 +417,29 @@ export default function CardPage() {
                     </div>
                   ) : null}
 
+                  {feePaid ? (
+                    <div className="mt-3 text-sm text-white/70">
+                      Daily limit increase isn’t available for this card type.
+                      Please contact support to increase your payment limit.
+                    </div>
+                  ) : null}
+
+                  {depositError ? (
+                    <div className="mt-3 text-sm text-rose-200/90">
+                      {depositError}
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 flex items-center justify-end gap-3">
                     {!feePaid ? (
                       <button
                         className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
                         onClick={payRaiseLimitFee}
-                        disabled={feeLoading || raiseFee === null || !Number.isFinite(amountNum)}
+                        disabled={
+                          feeLoading ||
+                          raiseFee === null ||
+                          !Number.isFinite(amountNum)
+                        }
                       >
                         {feeLoading ? "Processing..." : "Pay fee"}
                       </button>
@@ -371,14 +449,15 @@ export default function CardPage() {
                         onClick={confirmDeposit}
                         disabled={depositLoading || raiseFee === null}
                       >
-                        {depositLoading ? "Depositing..." : "Confirm deposit"}
+                        {depositLoading ? "Checking..." : "Confirm"}
                       </button>
                     )}
                   </div>
                 </div>
 
                 <div className="text-xs text-white/45">
-                  Note: This is a mock flow. Payment can fail with a simulated network error.
+                  Note: This is a mock flow. Payment can fail with a simulated
+                  network error.
                 </div>
               </div>
             </div>
