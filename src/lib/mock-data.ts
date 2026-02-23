@@ -8,6 +8,7 @@ export type Transaction = {
   description: string;
   amount: number;
   date: string; // ISO
+    meta?: { ref?: string; kind?: "deposit" | "activation"; note?: string };
 };
 
 export type Card = {
