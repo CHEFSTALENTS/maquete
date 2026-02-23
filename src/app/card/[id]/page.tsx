@@ -9,6 +9,8 @@ import { formatMoney } from "@/lib/utils";
 import type { Card, Transaction } from "@/lib/mock-data";
 import { loadCards, saveCards, depositToCard } from "@/lib/cards-store";
 
+/* ---------------------------- helpers ---------------------------- */
+
 function splitPan(pan: string) {
   const parts = pan.trim().split(/\s+/);
   return {
@@ -81,14 +83,32 @@ Pour des raisons de conformité (contrôles de risque et anti-fraude), l’augme
 `.trim();
 }
 
+/* ---------------------------- page ---------------------------- */
+
 export default function CardPage() {
   const params = useParams<{ id: string }>();
 
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
-
-  // Tabs (inline, so we can make rows clickable)
   const [tab, setTab] = useState<"transactions" | "topups">("transactions");
+
+  // Deposit flow
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [depositAmount, setDepositAmount] = useState<string>("2500");
+  const [feePaid, setFeePaid] = useState(false);
+  const [feeLoading, setFeeLoading] = useState(false);
+  const [feeError, setFeeError] = useState<string>("");
+  const [attemptLoading, setAttemptLoading] = useState(false);
+
+  // Error overlay
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorRef, setErrorRef] = useState<string>("");
+  const [errorText, setErrorText] = useState<string>("");
+
+  // Receipt overlay
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string>("");
 
   useEffect(() => {
     setAllCards(loadCards());
@@ -105,31 +125,8 @@ export default function CardPage() {
   const cvv = (card as any).cvv ?? "123";
   const { g1, g2, g3, g4 } = splitPan(pan);
 
-  // ----------------------------
-  // Deposit "flow" (fee gate + attempt)
-  // ----------------------------
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState<string>("2500");
-
-  const [feePaid, setFeePaid] = useState(false);
-  const [feeLoading, setFeeLoading] = useState(false);
-  const [feeError, setFeeError] = useState<string>("");
-
-  const [attemptLoading, setAttemptLoading] = useState(false);
-
   const amountNum = parseAmount(depositAmount);
   const raiseFee = Number.isFinite(amountNum) ? computeRaiseLimitFeeEur(amountNum) : null;
-
-  // ----------------------------
-  // Overlays: Error page + Success receipt page
-  // ----------------------------
-  const [errorOpen, setErrorOpen] = useState(false);
-  const [errorRef, setErrorRef] = useState<string>("");
-  const [errorText, setErrorText] = useState<string>("");
-
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
-  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string>("");
 
   function openDeposit() {
     setDepositOpen(true);
@@ -139,10 +136,10 @@ export default function CardPage() {
     setFeeError("");
     setAttemptLoading(false);
 
-    // reset overlays
     setErrorOpen(false);
     setErrorRef("");
     setErrorText("");
+
     setReceiptOpen(false);
     setReceiptTx(null);
     setReceiptInvoiceId("");
@@ -156,7 +153,7 @@ export default function CardPage() {
     setFeeError("");
     setFeeLoading(true);
     try {
-      // Simule parfois une erreur réseau de paiement
+      // parfois erreur réseau sur le paiement
       const fail = Math.random() < 0.2;
       await new Promise((r) => setTimeout(r, 550));
       if (fail) {
@@ -192,14 +189,14 @@ export default function CardPage() {
     try {
       await new Promise((r) => setTimeout(r, 650));
 
-      // ✅ On veut "des problèmes de temps en temps"
+      // “des problèmes de temps en temps”
       const shouldFail = Math.random() < 0.55;
 
       if (shouldFail) {
         const ref = buildIncidentRef();
         const msg = buildErrorMessage({ amountUsd: n, feeEur: raiseFee, cardId: card.id, ref });
 
-        // ✅ Ajoute une ligne TopUp "échec" cliquable (on parse le ref depuis la description)
+        // ✅ TopUp failed cliquable
         const failRow: Transaction = {
           id: `p-fail-${Date.now()}`,
           type: "Auth",
@@ -208,26 +205,22 @@ export default function CardPage() {
           amount: Number(n.toFixed(2)),
           date: nowIso(),
         };
-
         addTopupRowToCard(card.id, failRow);
 
-        // ✅ Ouvre la page d’erreur par-dessus
         setErrorRef(ref);
         setErrorText(msg);
         setErrorOpen(true);
         return;
       }
 
-      // ✅ Succès : balance + topup succeed + page confirmation cliquable
+      // ✅ success: update balance + topup succeed
       const next = depositToCard(allCards, card.id, n);
       setAllCards(next);
       saveCards(next);
 
-      // Récupère la topup ajoutée (la plus récente)
       const updated = next.find((c) => c.id === card.id);
       const newestTopup = updated?.topups?.[0] ?? null;
 
-      // Ouvre la page de confirmation (receipt)
       if (newestTopup) {
         setReceiptInvoiceId(makeInvoiceId());
         setReceiptTx(newestTopup);
@@ -241,7 +234,6 @@ export default function CardPage() {
   }
 
   function openErrorFromTopupRow(row: Transaction) {
-    // tente d'extraire INC-... depuis la description
     const m = row.description.match(/INC-\d{6}-\d{3}/);
     const ref = m?.[0] ?? buildIncidentRef();
     const fee = computeRaiseLimitFeeEur(Number(row.amount)) ?? 0;
@@ -258,19 +250,21 @@ export default function CardPage() {
     setReceiptOpen(true);
   }
 
-  // Rows per tab
-  const txRows = (tab === "transactions" ? (card.transactions ?? []) : (card.topups ?? [])) as Transaction[];
-
-  function renderRowActionHint(r: Transaction) {
-    if (tab !== "topups") return null;
-    if (r.status === "Failed") return <span className="text-rose-200/80 underline">Détails</span>;
-    return <span className="text-white/60 underline">Reçu</span>;
-  }
+  const rows: Transaction[] = tab === "transactions" ? (card.transactions ?? []) : (card.topups ?? []);
 
   function onRowClick(r: Transaction) {
     if (tab !== "topups") return;
     if (r.status === "Failed") openErrorFromTopupRow(r);
     else openReceiptFromTopupRow(r);
+  }
+
+  function renderRowActionHint(r: Transaction) {
+    if (tab !== "topups") return null;
+    return r.status === "Failed" ? (
+      <span className="text-rose-200/80 underline">Détails</span>
+    ) : (
+      <span className="text-white/60 underline">Reçu</span>
+    );
   }
 
   return (
@@ -411,7 +405,7 @@ export default function CardPage() {
           </div>
         </div>
 
-        {/* tabs + table (clickable for topups) */}
+        {/* tabs + table */}
         <div className="mt-6 max-w-[920px] mx-auto">
           <div className="flex items-center justify-center gap-3">
             <button
@@ -440,25 +434,25 @@ export default function CardPage() {
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.04)] overflow-hidden">
             <div className="w-full overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-white/0">
+                <thead>
                   <tr className="text-white/70">
                     <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[90px]">Type</th>
-                    <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[120px]">Status</th>
+                    <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[140px]">Status</th>
                     <th className="text-left font-medium px-4 py-3 border-b border-white/10">Description</th>
                     <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[140px]">Amount</th>
-                    <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[170px]">Date</th>
+                    <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[190px]">Date</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {txRows.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-10 text-center text-white/55">
                         {tab === "transactions" ? "No transactions." : "No topups."}
                       </td>
                     </tr>
                   ) : (
-                    txRows.map((r) => (
+                    rows.map((r) => (
                       <tr
                         key={r.id}
                         className={
@@ -475,8 +469,8 @@ export default function CardPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-white/75">
-                          {r.status} {tab === "topups" ? "· " : null}
-                          {tab === "topups" ? renderRowActionHint(r) : null}
+                          {r.status}
+                          {tab === "topups" ? <span className="ml-2">· {renderRowActionHint(r)}</span> : null}
                         </td>
                         <td className="px-4 py-3 text-white/85">{r.description}</td>
                         <td className="px-4 py-3 text-right text-white/85">{formatMoney(r.amount, "USD")}</td>
@@ -493,7 +487,7 @@ export default function CardPage() {
         </div>
       </div>
 
-      {/* Deposit modal (fee gate) */}
+      {/* Deposit modal */}
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
           <div className="absolute inset-0 bg-black/70" onClick={closeDeposit} />
@@ -589,7 +583,7 @@ export default function CardPage() {
         </div>
       )}
 
-      {/* ✅ Error "page" overlay (long FR) */}
+      {/* Error overlay page */}
       {errorOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
           <div className="absolute inset-0 bg-black/80" onClick={() => setErrorOpen(false)} />
@@ -602,7 +596,6 @@ export default function CardPage() {
                     Référence : <span className="font-mono">{errorRef}</span>
                   </div>
                 </div>
-
                 <button
                   className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
                   onClick={() => setErrorOpen(false)}
@@ -613,11 +606,12 @@ export default function CardPage() {
               </div>
 
               <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
-                <div className="prose prose-invert max-w-none text-sm">
+                <div className="text-sm">
                   {errorText.split("\n").map((line, idx) => {
                     const t = line.trim();
                     if (!t) return <div key={idx} className="h-3" />;
 
+                    // minimal **bold** support
                     const parts = t.split("**");
                     if (parts.length >= 3) {
                       return (
@@ -654,3 +648,114 @@ export default function CardPage() {
 
               <div className="mt-5 flex items-center justify-end gap-3">
                 <button
+                  className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+                  onClick={() => setErrorOpen(false)}
+                >
+                  Fermer
+                </button>
+                <button
+                  className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
+                  onClick={() => setErrorOpen(false)}
+                >
+                  J’ai compris
+                </button>
+              </div>
+
+              <div className="mt-4 text-xs text-white/45">
+                Transmettez la référence incident au support afin qu’ils puissent vérifier les plafonds autorisés et l’état du
+                réseau de routage.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success receipt overlay */}
+      {receiptOpen && receiptTx && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+          <div className="absolute inset-0 bg-black/80" onClick={() => setReceiptOpen(false)} />
+
+          <div className="relative w-full max-w-[520px]">
+            <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] overflow-hidden">
+              <div className="p-5 border-b border-white/10">
+                <div className="text-sm font-semibold">Success</div>
+                <div className="text-sm text-white/60 mt-1">Payment received.</div>
+              </div>
+
+              <div className="p-6">
+                <div className="text-center">
+                  <div className="text-xl font-semibold">Payment Succeeded!</div>
+
+                  <div className="mt-5 flex justify-center">
+                    <div className="h-24 w-24 rounded-full bg-green-500/90 flex items-center justify-center">
+                      <svg className="h-12 w-12 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 text-2xl font-semibold">Your card has been recharged successfully.</div>
+
+                  <div className="mt-4 text-sm text-white/45">
+                    Invoice ID: <span className="font-mono text-white/60">{receiptInvoiceId}</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-t border-white/10 pt-5 text-sm">
+                  <div className="flex items-center justify-between py-1 text-white/70">
+                    <span>Card Recharge Amount</span>
+                    <span className="text-white/90">{formatMoney(receiptTx.amount, "USD")}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-1 text-white/60">
+                    <span>Deposit Fee</span>
+                    <span>{formatMoney(Number((receiptTx.amount * 0.0526).toFixed(2)), "USD")}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-1 text-white/60">
+                    <span>Card Opening Fee</span>
+                    <span>{formatMoney(10, "USD")}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-1 text-white/60">
+                    <span>Deposit Amount</span>
+                    <span className="font-mono">{(receiptTx.amount / 127.8).toFixed(8)} SOL</span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-1 text-white/60">
+                    <span>Invoice Date</span>
+                    <span>{new Date(receiptTx.date).toLocaleString("fr-FR", { hour12: false })}</span>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <button
+                    className="w-full h-11 rounded-xl bg-white text-black font-medium hover:opacity-95"
+                    onClick={() => setReceiptOpen(false)}
+                  >
+                    View your SolCard
+                  </button>
+                </div>
+
+                <div className="mt-4 flex justify-center">
+                  <button className="text-xs text-white/50 underline" onClick={() => setReceiptOpen(false)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              className="absolute -top-3 -right-3 h-9 w-9 rounded-full border border-white/10 bg-[#0b0d12] hover:bg-white/5"
+              onClick={() => setReceiptOpen(false)}
+              aria-label="Close receipt"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+    </DottedBackground>
+  );
+}
