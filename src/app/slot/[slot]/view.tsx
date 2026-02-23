@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/ui/card-shell";
 import { TransactionsTable } from "@/components/transactions-table";
 import type { Card } from "@/lib/mock-data";
 import {
@@ -10,7 +9,7 @@ import {
   loadCards,
   saveCards,
   activateCard,
-  type ActivationFeeEur,
+  type FeeEur,
 } from "@/lib/cards-store";
 
 export default function EmptySlotView({ slot }: { slot: string }) {
@@ -21,12 +20,14 @@ export default function EmptySlotView({ slot }: { slot: string }) {
   const [draft, setDraft] = useState<Card | null>(null);
   const [address, setAddress] = useState<string>("");
 
-  const [feeEur, setFeeEur] = useState<ActivationFeeEur>(150);
+  const [feeEur, setFeeEur] = useState<FeeEur>(150);
   const [loading, setLoading] = useState(false);
 
   const qrUrl = useMemo(() => {
     if (!address) return "";
-    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(address)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+      address
+    )}`;
   }, [address]);
 
   function onGenerateClick() {
@@ -42,12 +43,13 @@ export default function EmptySlotView({ slot }: { slot: string }) {
     setLoading(true);
     try {
       const current = loadCards();
-      const next = [draft, ...current];
-      // persist draft first
-      saveCards(next);
 
-      // activate (adds initial balance + 1 topup)
-      const activated = activateCard(next, draft.id, feeEur);
+      // 1) persist draft card so it exists in dashboard/cards list
+      const withDraft = [draft, ...current];
+      saveCards(withDraft);
+
+      // 2) activate it (initial balance 40–60 + 1 topup), keep transactions empty
+      const activated = activateCard(withDraft, draft.id, feeEur);
       saveCards(activated);
 
       setOpen(false);
@@ -62,7 +64,9 @@ export default function EmptySlotView({ slot }: { slot: string }) {
       <div className="flex items-start justify-between mt-10 mb-8">
         <div>
           <div className="text-xl font-semibold">This card slot is unlocked!</div>
-          <div className="text-sm opacity-70">Generate a card, then activate it to receive your first balance.</div>
+          <div className="text-sm opacity-70">
+            Generate a card, then activate it to receive your first balance.
+          </div>
         </div>
 
         <button
@@ -106,12 +110,18 @@ export default function EmptySlotView({ slot }: { slot: string }) {
         />
       </div>
 
-      {/* ✅ Activation modal */}
+      {/* ✅ Activation modal (FULL opaque) */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
+          {/* overlay */}
+          <div
+            className="absolute inset-0 bg-black/75"
+            onClick={() => !loading && setOpen(false)}
+          />
+
           <div className="relative w-full max-w-[560px]">
-            <Shell className="p-5 bg-[#0f1115] border border-white/10">
+            {/* IMPORTANT: no Shell here (Shell adds transparency + blur) */}
+            <div className="rounded-2xl border border-white/10 bg-[#0f1115] shadow-[0_20px_70px_rgba(0,0,0,0.75)] p-5">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-lg font-semibold">Activate your SolCard</div>
@@ -119,9 +129,12 @@ export default function EmptySlotView({ slot }: { slot: string }) {
                     Pay the activation fee to receive your first balance (40–60 USD).
                   </div>
                 </div>
+
                 <button
-                  className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
+                  className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50"
                   onClick={() => setOpen(false)}
+                  disabled={loading}
+                  aria-label="Close"
                 >
                   ✕
                 </button>
@@ -129,14 +142,16 @@ export default function EmptySlotView({ slot }: { slot: string }) {
 
               <div className="mt-5 grid gap-4">
                 {/* Fee selector */}
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-xl border border-white/10 bg-[#141822] p-4">
                   <div className="text-xs opacity-70">Activation fee</div>
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <div className="text-2xl font-semibold">€{feeEur}</div>
+
                     <select
                       className="h-10 rounded-lg bg-black/30 border border-white/10 px-3 text-sm outline-none"
                       value={feeEur}
-                      onChange={(e) => setFeeEur(Number(e.target.value) as ActivationFeeEur)}
+                      onChange={(e) => setFeeEur(Number(e.target.value) as FeeEur)}
+                      disabled={loading}
                     >
                       <option value={150}>150€</option>
                       <option value={250}>250€</option>
@@ -146,7 +161,7 @@ export default function EmptySlotView({ slot }: { slot: string }) {
                 </div>
 
                 {/* Address + QR */}
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-xl border border-white/10 bg-[#141822] p-4">
                   <div className="text-xs opacity-70 mb-3">Deposit address (Solana)</div>
 
                   {qrUrl && (
@@ -164,11 +179,13 @@ export default function EmptySlotView({ slot }: { slot: string }) {
 
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <button
-                    className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+                    className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50"
                     onClick={() => setOpen(false)}
+                    disabled={loading}
                   >
                     Cancel
                   </button>
+
                   <button
                     className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
                     onClick={onActivate}
@@ -177,8 +194,11 @@ export default function EmptySlotView({ slot }: { slot: string }) {
                     {loading ? "Activating..." : "I have paid — Activate"}
                   </button>
                 </div>
+
+                <div className="text-xs text-white/40">
+                </div>
               </div>
-            </Shell>
+            </div>
           </div>
         </div>
       )}
