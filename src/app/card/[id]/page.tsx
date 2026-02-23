@@ -6,10 +6,9 @@ import { useParams } from "next/navigation";
 import { DottedBackground } from "@/components/ui/background";
 import { TopNav } from "@/components/top-nav";
 import { formatMoney } from "@/lib/utils";
-import type { Card, Transaction } from "@/lib/mock-data";
-import { loadCards, saveCards, depositToCard } from "@/lib/cards-store";
-
-/* ---------------------------- helpers ---------------------------- */
+import CardTabs from "./tabs";
+import type { Card } from "@/lib/mock-data";
+import { loadCards, saveCards, recordDepositAttempt } from "@/lib/cards-store";
 
 function splitPan(pan: string) {
   const parts = pan.trim().split(/\s+/);
@@ -44,77 +43,28 @@ function formatAmountFr(n: number) {
   }
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function makeInvoiceId() {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let out = "cmk";
-  for (let i = 0; i < 26; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
-function buildIncidentRef() {
+function makeIncidentRef() {
   return `INC-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`;
 }
-
-function buildErrorMessage(args: { amountUsd: number; feeEur: number; cardId: string; ref: string }) {
-  return `
-**Dépôt temporairement indisponible — validation des plafonds requise**
-
-Nous avons bien enregistré votre demande de dépôt de **${formatAmountFr(args.amountUsd)} USD** ainsi que le règlement des frais de levée de plafond (**${args.feeEur}€**).  
-Cependant, **le plafond journalier n’est pas disponible** pour ce type de carte via l’interface (paramétrage non activable en self-service).
-
-Pour des raisons de conformité (contrôles de risque et anti-fraude), l’augmentation des plafonds de paiement et de dépôt doit être **validée manuellement** par le **service technique**, afin de vérifier :
-- les plafonds autorisés sur votre profil (limitations journalières et cumulées),
-- les restrictions de paiement applicables (marchands, zones, fenêtres horaires),
-- l’état du routage réseau (intermittences possibles selon le provider).
-
-✅ **Action requise :** merci de contacter le **support technique** et de leur communiquer les informations ci-dessous afin qu’ils puissent vérifier votre plafond et finaliser l’activation.
-
-**Référence incident :** ${args.ref}  
-**Carte :** ${args.cardId}  
-**Montant demandé :** ${formatAmountFr(args.amountUsd)} USD  
-**Statut :** Contrôle plafonds en attente (validation manuelle)
-
-> Si vous relancez plusieurs fois l’opération, cela peut déclencher une mise en attente supplémentaire côté réseau.  
-> Nous vous recommandons de **ne pas réessayer immédiatement** et de vous rapprocher du support.
-`.trim();
-}
-
-/* ---------------------------- page ---------------------------- */
 
 export default function CardPage() {
   const params = useParams<{ id: string }>();
 
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
-  const [tab, setTab] = useState<"transactions" | "topups">("transactions");
 
-  // Deposit flow
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState<string>("2500");
-  const [feePaid, setFeePaid] = useState(false);
-  const [feeLoading, setFeeLoading] = useState(false);
-  const [feeError, setFeeError] = useState<string>("");
-  const [attemptLoading, setAttemptLoading] = useState(false);
-
-  // ✅ Discreet control: force error ON/OFF (default: auto/random)
-  const [failMode, setFailMode] = useState<"auto" | "alwaysFail" | "alwaysSuccess">("auto");
-
-  // Error overlay
-  const [errorOpen, setErrorOpen] = useState(false);
-  const [errorRef, setErrorRef] = useState<string>("");
-  const [errorText, setErrorText] = useState<string>("");
-
-  // Receipt overlay
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
-  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string>("");
+  // discreet fail control (persisted)
+  const [forceLimitFail, setForceLimitFail] = useState(false);
 
   useEffect(() => {
-    setAllCards(loadCards());
+    const cards = loadCards();
+    setAllCards(cards);
+
+    // restore toggle (discreet)
+    if (typeof window !== "undefined") {
+      const v = window.localStorage.getItem("solcard_mock_force_limit_fail");
+      setForceLimitFail(v === "1");
+    }
   }, []);
 
   const card = useMemo(() => {
@@ -128,25 +78,50 @@ export default function CardPage() {
   const cvv = (card as any).cvv ?? "123";
   const { g1, g2, g3, g4 } = splitPan(pan);
 
+  // ----------------------------
+  // Deposit modal state
+  // ----------------------------
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [depositAmount, setDepositAmount] = useState<string>("2500");
+
+  const [feePaid, setFeePaid] = useState(false);
+  const [feeLoading, setFeeLoading] = useState(false);
+  const [feeError, setFeeError] = useState<string>("");
+
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // ----------------------------
+  // Overlay states (FAIL + SUCCESS)
+  // ----------------------------
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayKind, setOverlayKind] = useState<"error" | "success">("error");
+  const [overlayRef, setOverlayRef] = useState<string>("");
+  const [overlayAmount, setOverlayAmount] = useState<number>(0);
+
   const amountNum = parseAmount(depositAmount);
   const raiseFee = Number.isFinite(amountNum) ? computeRaiseLimitFeeEur(amountNum) : null;
 
-  function openDeposit() {
+  function openDeposit(e?: React.MouseEvent) {
+    // SHIFT+click = toggle discreet fail/success
+    if (e?.shiftKey) {
+      const next = !forceLimitFail;
+      setForceLimitFail(next);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("solcard_mock_force_limit_fail", next ? "1" : "0");
+      }
+      return; // do not open modal on shift-click
+    }
+
     setDepositOpen(true);
     setDepositAmount("2500");
     setFeePaid(false);
     setFeeLoading(false);
     setFeeError("");
-    setAttemptLoading(false);
+    setConfirmLoading(false);
 
-    // keep failMode as-is (so you can set it once and test multiple times)
-    setErrorOpen(false);
-    setErrorRef("");
-    setErrorText("");
-
-    setReceiptOpen(false);
-    setReceiptTx(null);
-    setReceiptInvoiceId("");
+    setOverlayOpen(false);
+    setOverlayRef("");
+    setOverlayAmount(0);
   }
 
   function closeDeposit() {
@@ -157,12 +132,12 @@ export default function CardPage() {
     setFeeError("");
     setFeeLoading(true);
     try {
-      // sometimes network error on fee payment
-      const fail = Math.random() < 0.2;
-      await new Promise((r) => setTimeout(r, 550));
+      // fee payment: we keep it mostly stable
+      const fail = Math.random() < 0.15;
+      await new Promise((r) => setTimeout(r, 500));
       if (fail) {
         setFeePaid(false);
-        setFeeError("Erreur réseau lors du paiement des frais. Veuillez réessayer.");
+        setFeeError("Erreur réseau lors du paiement. Veuillez réessayer.");
         return;
       }
       setFeePaid(true);
@@ -171,110 +146,54 @@ export default function CardPage() {
     }
   }
 
-  function persist(next: Card[]) {
-    setAllCards(next);
-    saveCards(next);
+  function buildLongFrenchError(ref: string, amountUsd: number, feeEur: number) {
+    return [
+      "Dépôt temporairement indisponible — validation des plafonds requise",
+      "",
+      `Votre tentative de dépôt de ${formatAmountFr(amountUsd)} USD a bien été enregistrée, ainsi que le règlement des frais de levée de plafond (${feeEur}€).`,
+      "",
+      "Cependant, sur ce type de carte, le plafond journalier de paiement / dépôt ne peut pas être activé automatiquement depuis l’interface.",
+      "Pour des raisons de conformité (contrôle anti-fraude, routage réseau, limitations marchands), l’activation effective des plafonds doit être validée manuellement par le service technique.",
+      "",
+      "Merci de vous rapprocher du support technique en leur transmettant :",
+      `• Référence incident : ${ref}`,
+      `• Carte : ${card.id}`,
+      `• Montant demandé : ${formatAmountFr(amountUsd)} USD`,
+      "",
+      "Le support vérifiera :",
+      "• les plafonds autorisés sur votre profil,",
+      "• les restrictions de paiement applicables,",
+      "• et l’état du routage réseau du provider (intermittences possibles).",
+      "",
+      "Important : éviter de relancer l’opération plusieurs fois de suite, cela peut déclencher des mises en attente supplémentaires côté réseau.",
+    ].join("\n");
   }
 
-  function addTopupRowToCard(cardId: string, row: Transaction) {
-    const next = allCards.map((c) => {
-      if (c.id !== cardId) return c;
-      return {
-        ...c,
-        topups: [row, ...(c.topups ?? [])],
-        transactions: c.transactions ?? [],
-      };
-    });
-    persist(next);
-  }
-
-  async function attemptDeposit() {
+  async function confirmDeposit() {
     const n = parseAmount(depositAmount);
     if (!Number.isFinite(n) || n <= 0) return;
     if (!raiseFee || !feePaid) return;
 
-    setAttemptLoading(true);
+    setConfirmLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 650));
+      await new Promise((r) => setTimeout(r, 550));
 
-      // ✅ Decide fail/success based on discreet mode
-      const shouldFail =
-        failMode === "alwaysFail"
-          ? true
-          : failMode === "alwaysSuccess"
-          ? false
-          : Math.random() < 0.55; // auto
+      const ref = makeIncidentRef();
+      const ok = !forceLimitFail; // ✅ YOU CONTROL IT
 
-      if (shouldFail) {
-        const ref = buildIncidentRef();
-        const msg = buildErrorMessage({ amountUsd: n, feeEur: raiseFee, cardId: card.id, ref });
-
-        const failRow: Transaction = {
-          id: `p-fail-${Date.now()}`,
-          type: "Auth",
-          status: "Failed",
-          description: `Deposit failed — ${ref} (view details)`,
-          amount: Number(n.toFixed(2)),
-          date: nowIso(),
-        };
-        addTopupRowToCard(card.id, failRow);
-
-        setErrorRef(ref);
-        setErrorText(msg);
-        setErrorOpen(true);
-        return;
-      }
-
-      const next = depositToCard(allCards, card.id, n);
-      persist(next);
-
-      const updated = next.find((c) => c.id === card.id);
-      const newestTopup = updated?.topups?.[0] ?? null;
-
-      if (newestTopup) {
-        setReceiptInvoiceId(makeInvoiceId());
-        setReceiptTx(newestTopup);
-        setReceiptOpen(true);
-      }
+      const next = recordDepositAttempt(allCards, card.id, n, ok, ref);
+      setAllCards(next);
+      saveCards(next);
 
       setDepositOpen(false);
+
+      setOverlayRef(ref);
+      setOverlayAmount(n);
+      setOverlayKind(ok ? "success" : "error");
+      setOverlayOpen(true);
     } finally {
-      setAttemptLoading(false);
+      setConfirmLoading(false);
     }
-  }
-
-  function openErrorFromTopupRow(row: Transaction) {
-    const m = row.description.match(/INC-\d{6}-\d{3}/);
-    const ref = m?.[0] ?? buildIncidentRef();
-    const fee = computeRaiseLimitFeeEur(Number(row.amount)) ?? 0;
-    const msg = buildErrorMessage({ amountUsd: Number(row.amount), feeEur: fee, cardId: card.id, ref });
-
-    setErrorRef(ref);
-    setErrorText(msg);
-    setErrorOpen(true);
-  }
-
-  function openReceiptFromTopupRow(row: Transaction) {
-    setReceiptInvoiceId(makeInvoiceId());
-    setReceiptTx(row);
-    setReceiptOpen(true);
-  }
-
-  const rows: Transaction[] = tab === "transactions" ? (card.transactions ?? []) : (card.topups ?? []);
-
-  function onRowClick(r: Transaction) {
-    if (tab !== "topups") return;
-    if (r.status === "Failed") openErrorFromTopupRow(r);
-    else openReceiptFromTopupRow(r);
-  }
-
-  function renderRowActionHint(r: Transaction) {
-    if (tab !== "topups") return null;
-    return r.status === "Failed" ? (
-      <span className="text-rose-200/80 underline">Détails</span>
-    ) : (
-      <span className="text-white/60 underline">Reçu</span>
-    );
   }
 
   return (
@@ -290,8 +209,9 @@ export default function CardPage() {
             </Link>
 
             <button
-              onClick={openDeposit}
+              onClick={(e) => openDeposit(e)}
               className="ml-4 h-10 px-5 rounded-lg bg-white text-black text-sm font-medium shadow hover:opacity-95 transition"
+              title="Tip: Shift+Click to toggle deposit failure mode (discreet)"
             >
               Deposit
             </button>
@@ -319,19 +239,11 @@ export default function CardPage() {
             ←
           </button>
 
-          <div
-            className="
-              relative w-full max-w-[480px] aspect-[1.586/1]
-              rounded-2xl overflow-hidden border border-white/10
-              bg-[#16181d] shadow-[0_10px_40px_rgba(0,0,0,0.6)]
-            "
-          >
+          <div className="relative w-full max-w-[480px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-[#16181d] shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/40" />
 
             <div className="absolute left-5 top-4 flex items-center gap-3">
-              <div className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-xs">
-                Billing
-              </div>
+              <div className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-xs">Billing</div>
 
               <button
                 type="button"
@@ -366,6 +278,7 @@ export default function CardPage() {
                 <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g2}</span>
                 <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g3}</span>
               </div>
+
               <div className="text-3xl font-semibold tracking-wider">{g4}</div>
             </div>
 
@@ -381,8 +294,7 @@ export default function CardPage() {
             </div>
 
             <div className="absolute right-24 bottom-8 text-xs opacity-70">
-              CVV{" "}
-              <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>{cvv}</span>
+              CVV <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>{cvv}</span>
             </div>
 
             <div className="absolute right-6 bottom-6">
@@ -393,10 +305,7 @@ export default function CardPage() {
             </div>
           </div>
 
-          <button
-            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-            aria-label="Next card"
-          >
+          <button className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center" aria-label="Next card">
             →
           </button>
         </div>
@@ -415,85 +324,9 @@ export default function CardPage() {
           </div>
         </div>
 
-        {/* tabs + custom table */}
+        {/* tabs */}
         <div className="mt-6 max-w-[920px] mx-auto">
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => setTab("transactions")}
-              className={
-                tab === "transactions"
-                  ? "px-6 py-2 rounded-lg border text-sm transition bg-white/10 border-white/15"
-                  : "px-6 py-2 rounded-lg border text-sm transition bg-white/0 border-white/10 opacity-80 hover:opacity-100 hover:bg-white/5"
-              }
-            >
-              Transactions
-            </button>
-
-            <button
-              onClick={() => setTab("topups")}
-              className={
-                tab === "topups"
-                  ? "px-6 py-2 rounded-lg border text-sm transition bg-white/10 border-white/15"
-                  : "px-6 py-2 rounded-lg border text-sm transition bg-white/0 border border-white/10 opacity-80 hover:opacity-100 hover:bg-white/5"
-              }
-            >
-              Topups
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.04)] overflow-hidden">
-            <div className="w-full overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-white/70">
-                    <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[90px]">Type</th>
-                    <th className="text-left font-medium px-4 py-3 border-b border-white/10 w-[140px]">Status</th>
-                    <th className="text-left font-medium px-4 py-3 border-b border-white/10">Description</th>
-                    <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[140px]">Amount</th>
-                    <th className="text-right font-medium px-4 py-3 border-b border-white/10 w-[190px]">Date</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-white/55">
-                        {tab === "transactions" ? "No transactions." : "No topups."}
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((r) => (
-                      <tr
-                        key={r.id}
-                        className={
-                          tab === "topups"
-                            ? "border-b border-white/5 last:border-b-0 cursor-pointer hover:bg-white/[0.03]"
-                            : "border-b border-white/5 last:border-b-0"
-                        }
-                        onClick={() => onRowClick(r)}
-                        title={tab === "topups" ? "Open details" : undefined}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs">
-                            {r.type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-white/75">
-                          {r.status}
-                          {tab === "topups" ? <span className="ml-2">· {renderRowActionHint(r)}</span> : null}
-                        </td>
-                        <td className="px-4 py-3 text-white/85">{r.description}</td>
-                        <td className="px-4 py-3 text-right text-white/85">{formatMoney(r.amount, "USD")}</td>
-                        <td className="px-4 py-3 text-right text-white/70">
-                          {new Date(r.date).toLocaleString("fr-FR", { hour12: false })}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <CardTabs cardId={card.id} />
         </div>
       </div>
 
@@ -501,19 +334,18 @@ export default function CardPage() {
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
           <div className="absolute inset-0 bg-black/70" onClick={closeDeposit} />
+
           <div className="relative w-full max-w-[620px]">
             <div className="rounded-2xl border border-white/10 bg-[#0f1115] shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-lg font-semibold">Dépôt</div>
+                  <div className="text-lg font-semibold">Deposit</div>
                   <div className="text-sm opacity-70 mt-1">
-                    Pour déposer, vous devez lever le plafond.
+                    Pour déposer, vous devez lever le plafond (validation manuelle).
                   </div>
                 </div>
-                <button
-                  className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={closeDeposit}
-                >
+
+                <button className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5" onClick={closeDeposit}>
                   ✕
                 </button>
               </div>
@@ -542,21 +374,6 @@ export default function CardPage() {
                     <div>• 100€ pour 2 500 → 4 900</div>
                     <div>• 200€ pour 5 000 → 9 600</div>
                     <div>• 300€ pour 10 000+</div>
-                  </div>
-
-                  {/* ✅ Discreet selector (small + subtle) */}
-                  <div className="mt-4 flex items-center justify-between text-xs text-white/45">
-                    <span className="opacity-70">Routage</span>
-                    <select
-                      value={failMode}
-                      onChange={(e) => setFailMode(e.target.value as any)}
-                      className="h-8 rounded-md bg-black/30 border border-white/10 px-2 outline-none"
-                      title="Internal routing mode"
-                    >
-                      <option value="auto">Auto</option>
-                      <option value="alwaysFail">Audit (fail)</option>
-                      <option value="alwaysSuccess">OK (success)</option>
-                    </select>
                   </div>
                 </div>
 
@@ -590,17 +407,18 @@ export default function CardPage() {
                     ) : (
                       <button
                         className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
-                        onClick={attemptDeposit}
-                        disabled={attemptLoading || raiseFee === null}
+                        onClick={confirmDeposit}
+                        disabled={confirmLoading || raiseFee === null}
                       >
-                        {attemptLoading ? "Vérification..." : "Activer le dépôt"}
+                        {confirmLoading ? "Vérification..." : "Confirmer"}
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="text-xs text-white/45">
-                  Note : flux mock. Le dépôt peut échouer (plafond journalier non disponible / validation support).
+                {/* super discreet hint (you can remove) */}
+                <div className="text-[11px] text-white/25">
+                  Astuce interne : Shift+clic sur “Deposit” pour basculer succès/échec (discret).
                 </div>
               </div>
             </div>
@@ -608,175 +426,63 @@ export default function CardPage() {
         </div>
       )}
 
-      {/* Error overlay page */}
-      {errorOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/80" onClick={() => setErrorOpen(false)} />
+      {/* ✅ Overlay PAGE (Success/Fail) */}
+      {overlayOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
+          <div className="absolute inset-0 bg-black/80" onClick={() => setOverlayOpen(false)} />
           <div className="relative w-full max-w-[760px]">
             <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-lg font-semibold text-rose-200/90">Erreur de validation des plafonds</div>
+                  <div className={`text-lg font-semibold ${overlayKind === "success" ? "text-emerald-200/90" : "text-rose-200/90"}`}>
+                    {overlayKind === "success" ? "Dépôt confirmé" : "Erreur de validation des plafonds"}
+                  </div>
                   <div className="text-xs text-white/45 mt-1">
-                    Référence : <span className="font-mono">{errorRef}</span>
+                    Référence : <span className="font-mono">{overlayRef}</span>
                   </div>
                 </div>
+
                 <button
                   className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={() => setErrorOpen(false)}
+                  onClick={() => setOverlayOpen(false)}
                   aria-label="Close"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
-                <div className="text-sm">
-                  {errorText.split("\n").map((line, idx) => {
-                    const t = line.trim();
-                    if (!t) return <div key={idx} className="h-3" />;
-
-                    const parts = t.split("**");
-                    if (parts.length >= 3) {
-                      return (
-                        <div key={idx} className="text-white/80 leading-6">
-                          {parts.map((p, i) =>
-                            i % 2 === 1 ? (
-                              <strong key={i} className="text-white">
-                                {p}
-                              </strong>
-                            ) : (
-                              <span key={i}>{p}</span>
-                            )
-                          )}
-                        </div>
-                      );
-                    }
-
-                    if (t.startsWith(">")) {
-                      return (
-                        <div key={idx} className="mt-3 border-l border-white/15 pl-3 text-white/60 italic">
-                          {t.replace(/^>\s?/, "")}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div key={idx} className="text-white/80 leading-6">
-                        {t}
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 leading-6 whitespace-pre-line">
+                {overlayKind === "success" ? (
+                  <>
+                    Votre dépôt de <span className="text-white font-semibold">{formatAmountFr(overlayAmount)} USD</span> a été pris en compte.
+                    {"\n\n"}
+                    Le crédit a été appliqué sur votre solde et un enregistrement TopUp a été ajouté à l’instant de confirmation.
+                    {"\n\n"}
+                    Si vous ne voyez pas la mise à jour immédiatement, attendez quelques secondes et rafraîchissez la page.
+                  </>
+                ) : (
+                  buildLongFrenchError(overlayRef, overlayAmount, computeRaiseLimitFeeEur(overlayAmount) ?? 0)
+                )}
               </div>
 
               <div className="mt-5 flex items-center justify-end gap-3">
-                <button
-                  className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={() => setErrorOpen(false)}
-                >
+                <button className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5" onClick={() => setOverlayOpen(false)}>
                   Fermer
                 </button>
                 <button
                   className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
-                  onClick={() => setErrorOpen(false)}
+                  onClick={() => setOverlayOpen(false)}
                 >
-                  J’ai compris
+                  OK
                 </button>
               </div>
 
               <div className="mt-4 text-xs text-white/45">
-                Transmettez la référence incident au support afin qu’ils puissent vérifier les plafonds autorisés et l’état du
-                réseau de routage.
+                {overlayKind === "success"
+                  ? "Confirmation interne générée pour la simulation."
+                  : "Veuillez transmettre la référence incident au support technique pour vérification des plafonds autorisés."}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Success receipt overlay */}
-      {receiptOpen && receiptTx && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/80" onClick={() => setReceiptOpen(false)} />
-
-          <div className="relative w-full max-w-[520px]">
-            <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] overflow-hidden">
-              <div className="p-5 border-b border-white/10">
-                <div className="text-sm font-semibold">Success</div>
-                <div className="text-sm text-white/60 mt-1">Payment received.</div>
-              </div>
-
-              <div className="p-6">
-                <div className="text-center">
-                  <div className="text-xl font-semibold">Payment Succeeded!</div>
-
-                  <div className="mt-5 flex justify-center">
-                    <div className="h-24 w-24 rounded-full bg-green-500/90 flex items-center justify-center">
-                      <svg className="h-12 w-12 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 text-2xl font-semibold">Your card has been recharged successfully.</div>
-
-                  <div className="mt-4 text-sm text-white/45">
-                    Invoice ID: <span className="font-mono text-white/60">{receiptInvoiceId}</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 border-t border-white/10 pt-5 text-sm">
-                  <div className="flex items-center justify-between py-1 text-white/70">
-                    <span>Card Recharge Amount</span>
-                    <span className="text-white/90">{formatMoney(receiptTx.amount, "USD")}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 text-white/60">
-                    <span>Deposit Fee</span>
-                    <span>{formatMoney(Number((receiptTx.amount * 0.0526).toFixed(2)), "USD")}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 text-white/60">
-                    <span>Card Opening Fee</span>
-                    <span>{formatMoney(10, "USD")}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 text-white/60">
-                    <span>Deposit Amount</span>
-                    <span className="font-mono">{(receiptTx.amount / 127.8).toFixed(8)} SOL</span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1 text-white/60">
-                    <span>Invoice Date</span>
-                    <span>{new Date(receiptTx.date).toLocaleString("fr-FR", { hour12: false })}</span>
-                  </div>
-                </div>
-
-                <div className="mt-6">
-                  <button
-                    className="w-full h-11 rounded-xl bg-white text-black font-medium hover:opacity-95"
-                    onClick={() => setReceiptOpen(false)}
-                  >
-                    View your SolCard
-                  </button>
-                </div>
-
-                <div className="mt-4 flex justify-center">
-                  <button className="text-xs text-white/50 underline" onClick={() => setReceiptOpen(false)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <button
-              className="absolute -top-3 -right-3 h-9 w-9 rounded-full border border-white/10 bg-[#0b0d12] hover:bg-white/5"
-              onClick={() => setReceiptOpen(false)}
-              aria-label="Close receipt"
-              title="Close"
-            >
-              ✕
-            </button>
           </div>
         </div>
       )}
