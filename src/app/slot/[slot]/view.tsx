@@ -121,14 +121,11 @@ export default function EmptySlotView({ slot }: { slot: string }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
           {/* ✅ overlay non opaque + blur */}
-          <div
-            className="absolute inset-0 bg-black/35 backdrop-blur-[2px]"
-            onClick={() => setOpen(false)}
-          />
+         <div className="absolute inset-0 bg-black/95" onClick={() => setOpen(false)} />
 
           <div className="relative w-full max-w-[560px]">
-            <Shell className="p-5 bg-white/[0.06] border border-white/10">
-              <div className="flex items-start justify-between">
+<Shell className="p-5 bg-[#0b0d12] border border-white/10 shadow-[0_20px_80px_rgba(0,0,0,0.8)]">
+  <div className="flex items-start justify-between">
                 <div>
                   <div className="text-lg font-semibold">Activate your SolCard</div>
                   <div className="text-sm opacity-70 mt-1">
