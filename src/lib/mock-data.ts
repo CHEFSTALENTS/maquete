@@ -33,6 +33,10 @@ export type Card = {
 
   // optional: store issuance fee selection
   issuanceFeeEur?: 150 | 250 | 400;
+
+    // lifecycle
+  isActive?: boolean; // false = draft slot generated, true = activated
+  activationFeeEur?: 150 | 250 | 400; // fee paid at activation time
 };
 
 export const cards: Card[] = [
