@@ -31,7 +31,7 @@ export type Card = {
   transactions: Transaction[];
   topups: Transaction[];
 
-  // ✅ optional: store issuance fee selection
+  // optional: store issuance fee selection
   issuanceFeeEur?: 150 | 250 | 400;
 };
 
@@ -39,21 +39,18 @@ export const cards: Card[] = [
   {
     id: "solcard-2",
     name: "SolCard",
-    pan: "1234 5678 9012 3035",
-    cvv: "123",
+
+    // ✅ FAKE card details
+    pan: "5682 0078 9012 3035",
+    cvv: "892",
     ending: "3035",
+
     holder: "MATHEW VERBICK",
     expires: "02/29",
+
     balance: 3782.08,
     depositUsed: 502.52,
     depositLimit: 100000,
-    transactions: [],
-    topups: [],
-  },
-];
-    // ✅ NEW (FAKE)
-    pan: "5682 0078 9012 9831",
-    cvv: "892",
 
     transactions: [
       {
