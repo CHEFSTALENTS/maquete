@@ -1,4 +1,4 @@
-import type { Card } from "@/lib/mock-data";
+import type { Card, Transaction } from "@/lib/mock-data";
 import { cards as seedCards } from "@/lib/mock-data";
 
 const LS_KEY = "solcard_mock_cards_v1";
@@ -12,7 +12,6 @@ function pad4(n: number) {
 }
 
 function makePan(last4: string) {
-  // fake but consistent format
   const a = pad4(randInt(1000, 9999));
   const b = pad4(randInt(1000, 9999));
   const c = pad4(randInt(1000, 9999));
@@ -20,9 +19,44 @@ function makePan(last4: string) {
 }
 
 function makeExpiry() {
-  const mm = pad4(randInt(1, 12)).slice(-2);
+  const mm = String(randInt(1, 12)).padStart(2, "0");
   const yy = String(randInt(27, 32)); // 2027-2032
   return `${mm}/${yy}`;
+}
+
+function randomHolder() {
+  const first = [
+    "Mathew",
+    "Julien",
+    "Lucas",
+    "Ethan",
+    "Maxime",
+    "Noah",
+    "Leo",
+    "Hugo",
+    "Nathan",
+    "Oscar",
+    "Mila",
+    "Lina",
+    "Emma",
+    "Chloe",
+    "Jade",
+  ];
+  const last = [
+    "Verbick",
+    "Dupont",
+    "Martin",
+    "Bernard",
+    "Moreau",
+    "Roux",
+    "Fournier",
+    "Girard",
+    "Lambert",
+    "Fontaine",
+    "Chevalier",
+    "Masson",
+  ];
+  return `${first[randInt(0, first.length - 1)]} ${last[randInt(0, last.length - 1)]}`.toUpperCase();
 }
 
 export function loadCards(): Card[] {
@@ -44,7 +78,6 @@ export function saveCards(cards: Card[]) {
 }
 
 export function generateSolanaAddress() {
-  // fake Solana-like base58 length-ish
   const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const len = randInt(40, 44);
   let out = "";
@@ -52,31 +85,57 @@ export function generateSolanaAddress() {
   return out;
 }
 
+export function pickFeeEuro() {
+  const fees = [150, 250, 400] as const;
+  return fees[randInt(0, fees.length - 1)];
+}
+
 export function createCardForSlot(slot: string) {
   const last4 = pad4(randInt(0, 9999));
   const id = `solcard-${Date.now()}-${randInt(100, 999)}`;
-
-  const balance = randInt(40, 60) + Math.round(Math.random() * 99) / 100; // 40-60.xx
-  const depositLimit = 100000;
-  const depositUsed = 0;
 
   const card: Card = {
     id,
     name: "SolCard",
     ending: last4,
-    holder: "MATHEW VERBICK",
+    holder: randomHolder(),
     expires: makeExpiry(),
-    balance,
-    depositUsed,
-    depositLimit,
-    transactions: [],
-    topups: [],
+    balance: 0,
+    depositUsed: 0,
+    depositLimit: 100000,
+    transactions: [], // ✅ empty
+    topups: [],       // ✅ empty
     pan: makePan(last4),
     cvv: String(randInt(100, 999)),
   } as Card;
 
-  const feeUsd = 10; // affiche fee fixe (tu peux random si tu veux)
+  const feeEur = pickFeeEuro();
   const solAddress = generateSolanaAddress();
 
-  return { card, feeUsd, solAddress, slot };
+  return { card, feeEur, solAddress, slot };
+}
+
+export function applyTopupExactBalance(cards: Card[], cardId: string, amount: number): Card[] {
+  const nowIso = new Date().toISOString();
+
+  const topup: Transaction = {
+    id: `p-${Date.now()}`,
+    type: "Auth",
+    status: "Succeed",
+    description: "Topup - Card Funding",
+    amount: Number(amount.toFixed(2)),
+    date: nowIso,
+  };
+
+  return cards.map((c) => {
+    if (c.id !== cardId) return c;
+
+    // ✅ transactions remain unchanged (should stay empty unless you later add)
+    return {
+      ...c,
+      balance: Number(amount.toFixed(2)),      // ✅ balance EXACTLY = deposit amount
+      depositUsed: Number(amount.toFixed(2)),  // ✅ can mirror balance for mock
+      topups: [topup, ...(c.topups ?? [])],    // ✅ topup equals shown balance
+    };
+  });
 }
