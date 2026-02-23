@@ -16,35 +16,30 @@ export default function EmptySlotView({ slot }: { slot: string }) {
   const [tab, setTab] = useState<"transactions" | "topups">("transactions");
 
   const [open, setOpen] = useState(false);
-  const [feeEur, setFeeEur] = useState<150 | 250 | 400>(150);
-  const [address, setAddress] = useState<string>("");
+ const [feeEur, setFeeEur] = useState<150 | 250 | 400>(150);
+const [address, setAddress] = useState<string>("");
   const [generatedCard, setGeneratedCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
 
-  function onGenerateClick() {
-    const g = createCardForSlot(slot);
+ function onGenerateClick() {
+  const g = createCardForSlot(slot, feeEur);
+  setAddress(g.solAddress);
+  setOpen(true);
+}
 
-    setGeneratedCard(g.card);
-    setAddress(g.solAddress);
-    setOpen(true);
+async function onConfirm() {
+  setLoading(true);
+  try {
+    const g = createCardForSlot(slot, feeEur);
+    const current = loadCards();
+    const next = [g.card, ...current];
+    saveCards(next);
+    setOpen(false);
+    router.push(`/card/${g.card.id}`);
+  } finally {
+    setLoading(false);
   }
-
-  async function onConfirm() {
-    if (!generatedCard) return;
-
-    setLoading(true);
-    try {
-      const now = new Date().toISOString();
-      const initial = randomInt(40, 60); // ✅ 40–60$
-
-      const topup: Transaction = {
-        id: `topup-${Date.now()}`,
-        type: "Auth",
-        status: "Succeed",
-        description: "Topup - Card Funding",
-        amount: initial,
-        date: now,
-      };
+};
 
     const finalized: Card = {
   ...generatedCard,
@@ -144,18 +139,18 @@ export default function EmptySlotView({ slot }: { slot: string }) {
               <div className="mt-5 grid gap-4">
                 {/* ✅ fee dropdown */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs opacity-70">Issuance fee</div>
+  <div className="text-xs opacity-70">Issuance fee</div>
 
-                  <select
-                    value={feeEur}
-                    onChange={(e) => setFeeEur(Number(e.target.value) as 150 | 250 | 400)}
-                    className="mt-2 h-11 w-full rounded-lg bg-black/30 border border-white/10 px-3 text-sm outline-none"
-                  >
-                    <option value={150}>€150</option>
-                    <option value={250}>€250</option>
-                    <option value={400}>€400</option>
-                  </select>
-                </div>
+  <select
+    value={feeEur}
+    onChange={(e) => setFeeEur(Number(e.target.value) as 150 | 250 | 400)}
+    className="mt-2 h-11 w-full rounded-lg bg-[#0b0d12] border border-white/10 px-3 text-sm outline-none"
+  >
+    <option value={150}>150 €</option>
+    <option value={250}>250 €</option>
+    <option value={400}>400 €</option>
+  </select>
+</div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-xs opacity-70 mb-3">Deposit address (Solana)</div>
