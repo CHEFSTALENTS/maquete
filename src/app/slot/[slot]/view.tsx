@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "@/components/ui/card-shell";
 import { TransactionsTable } from "@/components/transactions-table";
+import type { Card } from "@/lib/mock-data";
 import { createCardForSlot, loadCards, saveCards } from "@/lib/cards-store";
 
 export default function EmptySlotView({ slot }: { slot: string }) {
@@ -11,30 +12,42 @@ export default function EmptySlotView({ slot }: { slot: string }) {
   const [tab, setTab] = useState<"transactions" | "topups">("transactions");
 
   const [open, setOpen] = useState(false);
-  const [feeUsd, setFeeUsd] = useState<number>(10);
+  const [feeEur, setFeeEur] = useState<number>(150);
   const [address, setAddress] = useState<string>("");
+  const [generatedCard, setGeneratedCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
 
   function onGenerateClick() {
     const g = createCardForSlot(slot);
-    setFeeUsd(g.feeUsd);
+
+    setGeneratedCard(g.card);
+    setFeeEur(g.feeEur);
     setAddress(g.solAddress);
     setOpen(true);
   }
 
   async function onConfirm() {
+    if (!generatedCard) return;
+
     setLoading(true);
     try {
-      const g = createCardForSlot(slot);
       const current = loadCards();
-      const next = [g.card, ...current];
+      const next = [generatedCard, ...current];
+
       saveCards(next);
       setOpen(false);
-      router.push(`/card/${g.card.id}`);
+
+      router.push(`/card/${generatedCard.id}`);
     } finally {
       setLoading(false);
     }
   }
+
+  const qrUrl = address
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+        address
+      )}`
+    : "";
 
   return (
     <div className="px-6 pb-12 max-w-5xl mx-auto">
@@ -52,8 +65,7 @@ export default function EmptySlotView({ slot }: { slot: string }) {
         </button>
       </div>
 
-      {/* ... ton bloc carte placeholder + progress + tabs ... */}
-
+      {/* Placeholder table area (as you had) */}
       <div className="max-w-[760px] mx-auto">
         <div className="grid grid-cols-2 gap-3 mb-4">
           <button
@@ -86,10 +98,13 @@ export default function EmptySlotView({ slot }: { slot: string }) {
         />
       </div>
 
-      {/* ✅ Modal deposit/activation */}
+      {/* ✅ Modal activation */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setOpen(false)}
+          />
           <div className="relative w-full max-w-[560px]">
             <Shell className="p-5 bg-[#0f1115] border border-white/10">
               <div className="flex items-start justify-between">
@@ -110,12 +125,23 @@ export default function EmptySlotView({ slot }: { slot: string }) {
               <div className="mt-5 grid gap-4">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-xs opacity-70">Issuance fee</div>
-                  <div className="text-2xl font-semibold mt-1">${feeUsd.toFixed(2)}</div>
+                  <div className="text-2xl font-semibold mt-1">€{feeEur}</div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs opacity-70">Deposit address (Solana)</div>
-                  <div className="mt-2 font-mono text-sm break-all">{address}</div>
+                  <div className="text-xs opacity-70 mb-3">Deposit address (Solana)</div>
+
+                  {qrUrl && (
+                    <div className="w-full flex justify-center mb-3">
+                      <img
+                        src={qrUrl}
+                        alt="Solana deposit QR"
+                        className="h-[220px] w-[220px] rounded-xl bg-white p-2"
+                      />
+                    </div>
+                  )}
+
+                  <div className="font-mono text-sm break-all">{address}</div>
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-2">
