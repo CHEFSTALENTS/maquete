@@ -10,36 +10,47 @@ export type Transaction = {
   date: string; // ISO
 };
 
-issuanceFeeEur?: 150 | 250 | 400;
-
 export type Card = {
   id: string;
   name: string;
+
+  // card display
+  pan: string; // "1234 5678 9012 3456"
+  cvv: string; // "123"
   ending: string;
+
   holder: string;
   expires: string; // MM/YY
+
+  // balances / limits
   balance: number;
   depositUsed: number;
   depositLimit: number;
+
+  // history
   transactions: Transaction[];
   topups: Transaction[];
 
-  // ✅ NEW (FAKE / UI ONLY)
-  pan: string; // "5682 0078 9012 9831"
-  cvv: string; // "892"
+  // ✅ optional: store issuance fee selection
+  issuanceFeeEur?: 150 | 250 | 400;
 };
 
 export const cards: Card[] = [
   {
     id: "solcard-2",
     name: "SolCard",
+    pan: "1234 5678 9012 3035",
+    cvv: "123",
     ending: "3035",
-    holder: "ANNE THUMPSON",
+    holder: "MATHEW VERBICK",
     expires: "02/29",
-    balance: 51.08,
-    depositUsed: 0,
+    balance: 3782.08,
+    depositUsed: 502.52,
     depositLimit: 100000,
-
+    transactions: [],
+    topups: [],
+  },
+];
     // ✅ NEW (FAKE)
     pan: "5682 0078 9012 9831",
     cvv: "892",
