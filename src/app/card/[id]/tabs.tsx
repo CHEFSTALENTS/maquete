@@ -1,18 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { cards } from "@/lib/mock-data";
+import { useMemo, useState, useEffect } from "react";
+import { Shell } from "@/components/ui/card-shell";
 import { TransactionsTable } from "@/components/transactions-table";
+import type { Card } from "@/lib/mock-data";
+import { loadCards } from "@/lib/cards-store";
 
-export default function CardTabs({
-  cardId,
-  onOpenError,
-}: {
-  cardId: string;
-  onOpenError?: () => void;
-}) {
-  const card = useMemo(() => cards.find((c) => c.id === cardId) ?? cards[0], [cardId]);
+export default function CardTabs({ cardId }: { cardId: string }) {
+  const [allCards, setAllCards] = useState<Card[]>([]);
   const [tab, setTab] = useState<"transactions" | "topups">("transactions");
+
+  useEffect(() => {
+    setAllCards(loadCards());
+  }, []);
+
+  const card = useMemo(() => {
+    return allCards.find((c) => c.id === cardId) ?? allCards[0];
+  }, [allCards, cardId]);
+
+  const rows = tab === "transactions" ? (card?.transactions ?? []) : (card?.topups ?? []);
 
   return (
     <div className="mt-6">
@@ -41,14 +47,13 @@ export default function CardTabs({
       </div>
 
       <div className="mt-4">
-        <TransactionsTable
-          rows={tab === "transactions" ? card.transactions : card.topups}
-          currency="USD"
-          emptyText={tab === "transactions" ? "No transactions." : "No topups."}
-          onStatusClick={(row) => {
-            if (row.status === "Failed") onOpenError?.();
-          }}
-        />
+        <Shell className="p-4 sc-glass border border-white/10 bg-white/5">
+          <TransactionsTable
+            rows={rows}
+            currency="USD"
+            emptyText={tab === "transactions" ? "No transactions." : "No topups."}
+          />
+        </Shell>
       </div>
     </div>
   );
