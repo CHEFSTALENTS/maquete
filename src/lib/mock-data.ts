@@ -8,7 +8,7 @@ export type Transaction = {
   description: string;
   amount: number;
   date: string; // ISO
-    meta?: { ref?: string; kind?: "deposit" | "activation"; note?: string };
+  meta?: { ref?: string; kind?: "deposit" | "activation"; note?: string };
 };
 
 export type Card = {
@@ -34,7 +34,7 @@ export type Card = {
   // ✅ per-card simulation toggle: only this card can fail limit validation
   forceLimitFail?: boolean;
 
-  // (optional if you already use them elsewhere)
+  // activation state
   isActive?: boolean;
   activationFeeEur?: 150 | 250 | 400;
 };
@@ -56,6 +56,14 @@ export const cards: Card[] = [
     depositUsed: 502.52,
     depositLimit: 100000,
 
+    // ✅ seed card is active by default
+    isActive: true,
+    activationFeeEur: 150,
+
+    // ✅ default: do NOT force limit failures unless you set it explicitly per card
+    forceLimitFail: false,
+
+    // (seed history)
     transactions: [
       {
         id: "t1",
@@ -131,6 +139,11 @@ export const cards: Card[] = [
         description: "Topup - Card Funding",
         amount: 3380,
         date: "2026-02-22T11:40:20Z",
+        meta: {
+          ref: "SEED-3380",
+          kind: "deposit",
+          note: "Seed topup (mock)",
+        },
       },
       {
         id: "p2",
@@ -139,6 +152,11 @@ export const cards: Card[] = [
         description: "Topup - Card Funding",
         amount: 51,
         date: "2026-02-22T09:28:31Z",
+        meta: {
+          ref: "SEED-0051",
+          kind: "deposit",
+          note: "Seed topup (mock)",
+        },
       },
     ],
   },
