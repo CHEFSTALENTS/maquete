@@ -46,13 +46,12 @@ export default function EmptySlotView({ slot }: { slot: string }) {
         date: now,
       };
 
-      const finalized: Card = {
-        ...generatedCard,
-        issuanceFeeEur: feeEur as any, // si ton type Card ne l’a pas encore, voir note plus bas
-        balance: initial,
-        transactions: [], // ✅ 0 tx
-        topups: [topup], // ✅ topup auto = solde
-      };
+    const finalized: Card = {
+  ...generatedCard,
+  balance: initial,
+  transactions: [], // ✅ 0 tx
+  topups: [topup],  // ✅ topup auto = solde
+};
 
       const current = loadCards();
       saveCards([finalized, ...current]);
