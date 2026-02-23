@@ -20,7 +20,7 @@ export default function CardTabs({ cardId }: { cardId: string }) {
 
     // optional: local event you can dispatch after saveCards (if you already do)
     window.addEventListener("solcard:cards:changed" as any, refresh);
-
+window.dispatchEvent(new Event("solcard:cards:changed"));
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("solcard:cards:changed" as any, refresh);
