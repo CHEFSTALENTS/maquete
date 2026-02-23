@@ -2,17 +2,14 @@ import type { Card, Transaction } from "@/lib/mock-data";
 import { cards as seedCards } from "@/lib/mock-data";
 
 const LS_KEY = "solcard_mock_cards_v1";
-
-export type ActivationFeeEur = 150 | 250 | 400;
+export type FeeEur = 150 | 250 | 400;
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
 function pad4(n: number) {
   return String(n).padStart(4, "0");
 }
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -31,8 +28,8 @@ function makeExpiry() {
 }
 
 function randomHolder() {
-  const first = ["Mathew", "Julien", "Lucas", "Ethan", "Maxime", "Noah", "Leo", "Hugo", "Nathan", "Oscar", "Mila", "Lina", "Emma", "Chloe", "Jade"];
-  const last = ["Verbick", "Dupont", "Martin", "Bernard", "Moreau", "Roux", "Fournier", "Girard", "Lambert", "Fontaine", "Chevalier", "Masson"];
+  const first = ["Mathew","Julien","Lucas","Ethan","Maxime","Noah","Leo","Hugo","Nathan","Oscar","Mila","Lina","Emma","Chloe","Jade"];
+  const last = ["Verbick","Dupont","Martin","Bernard","Moreau","Roux","Fournier","Girard","Lambert","Fontaine","Chevalier","Masson"];
   return `${first[randInt(0, first.length - 1)]} ${last[randInt(0, last.length - 1)]}`.toUpperCase();
 }
 
@@ -62,32 +59,33 @@ export function generateSolanaAddress() {
   return out;
 }
 
-export function pickActivationFeeEuro(): ActivationFeeEur {
-  const fees: ActivationFeeEur[] = [150, 250, 400];
+export function pickFeeEuro(): FeeEur {
+  const fees = [150, 250, 400] as const;
   return fees[randInt(0, fees.length - 1)];
 }
 
 function makeTopup(args: {
   amount: number;
   status: "Succeed" | "Failed";
-  ref?: string;
+  ref: string; // always for clickable rows
   note?: string;
 }): Transaction {
-  const { amount, status, ref, note } = args;
-
   return {
     id: `p-${Date.now()}-${randInt(100, 999)}`,
     type: "Auth",
-    status,
-    description: status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
-    amount: Number(amount.toFixed(2)),
+    status: args.status,
+    description: args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
+    amount: Number(args.amount.toFixed(2)),
     date: nowIso(),
-    meta: { ref, kind: "deposit", note },
+    meta: { ref: args.ref, kind: "deposit", note: args.note },
   };
 }
 
 /**
- * ✅ STEP 1 — Generate card (DRAFT)
+ * Draft card generation (slot flow)
+ * - transactions empty
+ * - topups empty
+ * - not active yet
  */
 export function createDraftCardForSlot(slot: string) {
   const last4 = pad4(randInt(0, 9999));
@@ -107,10 +105,12 @@ export function createDraftCardForSlot(slot: string) {
     depositUsed: 0,
     depositLimit: 100000,
 
-    transactions: [],
+    transactions: [], // ✅ new card = zero transactions
     topups: [],
 
     isActive: false,
+    activationFeeEur: undefined,
+    forceLimitFail: false,
   };
 
   const solAddress = generateSolanaAddress();
@@ -118,18 +118,23 @@ export function createDraftCardForSlot(slot: string) {
 }
 
 /**
- * ✅ STEP 2 — Activate card (always succeeds)
+ * Activate card (ALWAYS succeeds):
+ * - initial balance 40..60
+ * - initial topup created (not clickable or clickable, up to you)
+ * - transactions stay empty
  */
-export function activateCard(cards: Card[], cardId: string, feeEur: ActivationFeeEur): Card[] {
+export function activateCard(cards: Card[], cardId: string, feeEur: FeeEur): Card[] {
   const initial = randInt(40, 60);
-  const topup: Transaction = {
+  const ref = `ACT-${Date.now().toString().slice(-6)}-${randInt(100, 999)}`;
+
+  const activationTopup: Transaction = {
     id: `p-${Date.now()}-${randInt(100, 999)}`,
     type: "Auth",
     status: "Succeed",
     description: "Topup - Card Funding",
     amount: Number(initial.toFixed(2)),
     date: nowIso(),
-    meta: { kind: "activation", note: `Activation fee €${feeEur}` },
+    meta: { ref, kind: "activation", note: `Activation fee €${feeEur}` },
   };
 
   return cards.map((c) => {
@@ -142,19 +147,32 @@ export function activateCard(cards: Card[], cardId: string, feeEur: ActivationFe
       activationFeeEur: feeEur,
       balance: Number(initial.toFixed(2)),
       depositUsed: Number(initial.toFixed(2)),
-      transactions: [],
-      topups: [topup],
+      transactions: [], // ✅ stays empty
+      topups: [activationTopup],
     };
   });
 }
 
 /**
- * ✅ STEP 3 — Record a deposit attempt (success OR fail)
- * - Always creates a Topup row (clickable in UI)
- * - If success: balance increases
- * - If fail: balance unchanged, but topup logged with status Failed + ref
+ * ✅ Per-card toggle: only this card will fail the "limit" validation
  */
-export function recordDepositAttempt(cards: Card[], cardId: string, amount: number, ok: boolean, ref?: string): Card[] {
+export function setCardForceLimitFail(cards: Card[], cardId: string, value: boolean): Card[] {
+  return cards.map((c) => (c.id === cardId ? { ...c, forceLimitFail: value } : c));
+}
+
+/**
+ * Deposit attempt:
+ * - always logs a topup row (Succeed or Failed) so it’s visible + clickable
+ * - if failed: does NOT change balance
+ * - if succeed: adds to balance & depositUsed
+ */
+export function recordDepositAttempt(
+  cards: Card[],
+  cardId: string,
+  amount: number,
+  ok: boolean,
+  ref: string
+): Card[] {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) return cards;
 
@@ -162,7 +180,7 @@ export function recordDepositAttempt(cards: Card[], cardId: string, amount: numb
     amount: amt,
     status: ok ? "Succeed" : "Failed",
     ref,
-    note: ok ? "Deposit confirmed" : "Limit validation error",
+    note: ok ? "Deposit confirmed" : "Limit validation required",
   });
 
   return cards.map((c) => {
