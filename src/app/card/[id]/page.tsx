@@ -8,7 +8,7 @@ import { TopNav } from "@/components/top-nav";
 import { formatMoney } from "@/lib/utils";
 import CardTabs from "./tabs";
 import type { Card } from "@/lib/mock-data";
-import { loadCards, saveCards, recordDepositAttempt } from "@/lib/cards-store";
+import { loadCards, saveCards, recordDepositAttempt, setCardForceLimitFail } from "@/lib/cards-store";
 
 function splitPan(pan: string) {
   const parts = pan.trim().split(/\s+/);
@@ -34,17 +34,14 @@ function computeRaiseLimitFeeEur(depositAmount: number): number | null {
 
 function formatAmountFr(n: number) {
   try {
-    return new Intl.NumberFormat("fr-FR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(n);
+    return new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
   } catch {
     return String(n);
   }
 }
 
-function makeIncidentRef() {
-  return `INC-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`;
+function makeIncidentRef(prefix: string) {
+  return `${prefix}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`;
 }
 
 export default function CardPage() {
@@ -53,18 +50,8 @@ export default function CardPage() {
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
 
-  // discreet fail control (persisted)
-  const [forceLimitFail, setForceLimitFail] = useState(false);
-
   useEffect(() => {
-    const cards = loadCards();
-    setAllCards(cards);
-
-    // restore toggle (discreet)
-    if (typeof window !== "undefined") {
-      const v = window.localStorage.getItem("solcard_mock_force_limit_fail");
-      setForceLimitFail(v === "1");
-    }
+    setAllCards(loadCards());
   }, []);
 
   const card = useMemo(() => {
@@ -90,38 +77,53 @@ export default function CardPage() {
 
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  // ----------------------------
-  // Overlay states (FAIL + SUCCESS)
-  // ----------------------------
-  const [overlayOpen, setOverlayOpen] = useState(false);
-  const [overlayKind, setOverlayKind] = useState<"error" | "success">("error");
-  const [overlayRef, setOverlayRef] = useState<string>("");
-  const [overlayAmount, setOverlayAmount] = useState<number>(0);
+  // per-card toggle UI
+  const [forceFailLocal, setForceFailLocal] = useState<boolean>(!!card.forceLimitFail);
+
+  useEffect(() => {
+    setForceFailLocal(!!card.forceLimitFail);
+  }, [card?.id]);
 
   const amountNum = parseAmount(depositAmount);
   const raiseFee = Number.isFinite(amountNum) ? computeRaiseLimitFeeEur(amountNum) : null;
 
-  function openDeposit(e?: React.MouseEvent) {
-    // SHIFT+click = toggle discreet fail/success
-    if (e?.shiftKey) {
-      const next = !forceLimitFail;
-      setForceLimitFail(next);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("solcard_mock_force_limit_fail", next ? "1" : "0");
-      }
-      return; // do not open modal on shift-click
+  // ----------------------------
+  // Overlay (Success / Error)
+  // ----------------------------
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayKind, setOverlayKind] = useState<"success" | "error">("success");
+  const [overlayRef, setOverlayRef] = useState("");
+  const [overlayAmount, setOverlayAmount] = useState(0);
+  const [overlayDate, setOverlayDate] = useState("");
+  const [overlayNote, setOverlayNote] = useState("");
+
+  // listen to clickable topups from TransactionsTable
+  useEffect(() => {
+    function onOpen(e: any) {
+      const d = e?.detail;
+      if (!d?.ref) return;
+
+      const isFailed = String(d.status).toLowerCase() === "failed";
+
+      setOverlayKind(isFailed ? "error" : "success");
+      setOverlayRef(String(d.ref));
+      setOverlayAmount(Number(d.amount ?? 0));
+      setOverlayDate(String(d.date ?? ""));
+      setOverlayNote(String(d.note ?? ""));
+      setOverlayOpen(true);
     }
 
+    window.addEventListener("solcard:topup:open", onOpen as any);
+    return () => window.removeEventListener("solcard:topup:open", onOpen as any);
+  }, []);
+
+  function openDeposit() {
     setDepositOpen(true);
     setDepositAmount("2500");
     setFeePaid(false);
     setFeeLoading(false);
     setFeeError("");
     setConfirmLoading(false);
-
-    setOverlayOpen(false);
-    setOverlayRef("");
-    setOverlayAmount(0);
   }
 
   function closeDeposit() {
@@ -132,9 +134,9 @@ export default function CardPage() {
     setFeeError("");
     setFeeLoading(true);
     try {
-      // fee payment: we keep it mostly stable
+      // fee payment can fail sometimes (optional)
       const fail = Math.random() < 0.15;
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 520));
       if (fail) {
         setFeePaid(false);
         setFeeError("Erreur réseau lors du paiement. Veuillez réessayer.");
@@ -146,26 +148,22 @@ export default function CardPage() {
     }
   }
 
-  function buildLongFrenchError(ref: string, amountUsd: number, feeEur: number) {
+  function longFrenchLimitError(ref: string, amountUsd: number, feeEur: number) {
     return [
       "Dépôt temporairement indisponible — validation des plafonds requise",
       "",
-      `Votre tentative de dépôt de ${formatAmountFr(amountUsd)} USD a bien été enregistrée, ainsi que le règlement des frais de levée de plafond (${feeEur}€).`,
+      `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(amountUsd)} USD ainsi que le règlement des frais de levée de plafond (${feeEur}€).`,
       "",
-      "Cependant, sur ce type de carte, le plafond journalier de paiement / dépôt ne peut pas être activé automatiquement depuis l’interface.",
-      "Pour des raisons de conformité (contrôle anti-fraude, routage réseau, limitations marchands), l’activation effective des plafonds doit être validée manuellement par le service technique.",
+      "Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.",
+      "L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique (conformité, anti-fraude, restrictions marchands, routage réseau).",
       "",
-      "Merci de vous rapprocher du support technique en leur transmettant :",
-      `• Référence incident : ${ref}`,
-      `• Carte : ${card.id}`,
-      `• Montant demandé : ${formatAmountFr(amountUsd)} USD`,
+      "Action requise : merci de contacter le service technique afin qu’ils vérifient les plafonds autorisés et débloquent l’activation.",
       "",
-      "Le support vérifiera :",
-      "• les plafonds autorisés sur votre profil,",
-      "• les restrictions de paiement applicables,",
-      "• et l’état du routage réseau du provider (intermittences possibles).",
+      `Référence incident : ${ref}`,
+      `Carte : ${card.id}`,
+      `Montant demandé : ${formatAmountFr(amountUsd)} USD`,
       "",
-      "Important : éviter de relancer l’opération plusieurs fois de suite, cela peut déclencher des mises en attente supplémentaires côté réseau.",
+      "Conseil : évitez de relancer l’opération en boucle. Cela peut déclencher une mise en attente supplémentaire côté réseau/provider.",
     ].join("\n");
   }
 
@@ -178,8 +176,8 @@ export default function CardPage() {
     try {
       await new Promise((r) => setTimeout(r, 550));
 
-      const ref = makeIncidentRef();
-      const ok = !forceLimitFail; // ✅ YOU CONTROL IT
+      const ref = makeIncidentRef("INC");
+      const ok = !card.forceLimitFail; // ✅ per-card control
 
       const next = recordDepositAttempt(allCards, card.id, n, ok, ref);
       setAllCards(next);
@@ -187,13 +185,22 @@ export default function CardPage() {
 
       setDepositOpen(false);
 
+      setOverlayKind(ok ? "success" : "error");
       setOverlayRef(ref);
       setOverlayAmount(n);
-      setOverlayKind(ok ? "success" : "error");
+      setOverlayDate(new Date().toISOString());
+      setOverlayNote(ok ? "Deposit confirmed" : "Limit validation required");
       setOverlayOpen(true);
     } finally {
       setConfirmLoading(false);
     }
+  }
+
+  function onToggleFailForThisCard(v: boolean) {
+    setForceFailLocal(v);
+    const next = setCardForceLimitFail(allCards, card.id, v);
+    setAllCards(next);
+    saveCards(next);
   }
 
   return (
@@ -209,9 +216,8 @@ export default function CardPage() {
             </Link>
 
             <button
-              onClick={(e) => openDeposit(e)}
+              onClick={openDeposit}
               className="ml-4 h-10 px-5 rounded-lg bg-white text-black text-sm font-medium shadow hover:opacity-95 transition"
-              title="Tip: Shift+Click to toggle deposit failure mode (discreet)"
             >
               Deposit
             </button>
@@ -232,10 +238,7 @@ export default function CardPage() {
 
         {/* card area */}
         <div className="mt-10 flex items-center justify-center gap-10">
-          <button
-            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-            aria-label="Previous card"
-          >
+          <button className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center" aria-label="Previous card">
             ←
           </button>
 
@@ -269,7 +272,6 @@ export default function CardPage() {
             </div>
 
             <div className="absolute right-6 top-5 text-xl font-semibold tracking-wide">SolCard</div>
-
             <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/60 border border-white/10" />
 
             <div className="absolute left-6 top-[108px] flex items-center gap-4">
@@ -278,7 +280,6 @@ export default function CardPage() {
                 <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g2}</span>
                 <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g3}</span>
               </div>
-
               <div className="text-3xl font-semibold tracking-wider">{g4}</div>
             </div>
 
@@ -294,7 +295,8 @@ export default function CardPage() {
             </div>
 
             <div className="absolute right-24 bottom-8 text-xs opacity-70">
-              CVV <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>{cvv}</span>
+              CVV{" "}
+              <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>{cvv}</span>
             </div>
 
             <div className="absolute right-6 bottom-6">
@@ -318,7 +320,6 @@ export default function CardPage() {
               {formatMoney(card.depositUsed, "USD")} / {formatMoney(card.depositLimit, "USD")}
             </div>
           </div>
-
           <div className="h-[6px] rounded-full bg-white/15 overflow-hidden">
             <div className="h-full bg-white/70" style={{ width: `${Math.min(100, pct)}%` }} />
           </div>
@@ -330,13 +331,15 @@ export default function CardPage() {
         </div>
       </div>
 
-      {/* Deposit modal */}
+      {/* Deposit modal (FULL / not transparent) */}
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/70" onClick={closeDeposit} />
+          {/* ✅ overlay stronger => no dots visible */}
+          <div className="absolute inset-0 bg-black/95" onClick={closeDeposit} />
 
           <div className="relative w-full max-w-[620px]">
-            <div className="rounded-2xl border border-white/10 bg-[#0f1115] shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-5">
+            {/* ✅ modal solid => no background bleed */}
+            <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-lg font-semibold">Deposit</div>
@@ -344,7 +347,6 @@ export default function CardPage() {
                     Pour déposer, vous devez lever le plafond (validation manuelle).
                   </div>
                 </div>
-
                 <button className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5" onClick={closeDeposit}>
                   ✕
                 </button>
@@ -362,7 +364,7 @@ export default function CardPage() {
                         setFeeError("");
                       }}
                       inputMode="decimal"
-                      className="h-11 w-full rounded-lg bg-black/30 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+                      className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
                     />
                     <div className="h-11 px-3 rounded-lg bg-white/5 border border-white/10 flex items-center text-sm opacity-80">
                       USD
@@ -374,6 +376,29 @@ export default function CardPage() {
                     <div>• 100€ pour 2 500 → 4 900</div>
                     <div>• 200€ pour 5 000 → 9 600</div>
                     <div>• 300€ pour 10 000+</div>
+                  </div>
+                </div>
+
+                {/* ✅ per-card discreet toggle */}
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium">Mode simulation (cette carte)</div>
+                      <div className="text-xs text-white/55 mt-1">
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleFailForThisCard(!forceFailLocal)}
+                      className={
+                        forceFailLocal
+                          ? "h-9 px-3 rounded-lg bg-rose-200 text-black text-sm font-medium"
+                          : "h-9 px-3 rounded-lg bg-white/10 border border-white/10 text-sm"
+                      }
+                    >
+                      {forceFailLocal ? "Échec plafond: ON" : "Échec plafond: OFF"}
+                    </button>
                   </div>
                 </div>
 
@@ -416,9 +441,7 @@ export default function CardPage() {
                   </div>
                 </div>
 
-                {/* super discreet hint (you can remove) */}
-                <div className="text-[11px] text-white/25">
-                  Astuce interne : Shift+clic sur “Deposit” pour basculer succès/échec (discret).
+                <div className="text-xs text-white/45">
                 </div>
               </div>
             </div>
@@ -426,10 +449,10 @@ export default function CardPage() {
         </div>
       )}
 
-      {/* ✅ Overlay PAGE (Success/Fail) */}
+      {/* Overlay page (success/error) */}
       {overlayOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/80" onClick={() => setOverlayOpen(false)} />
+          <div className="absolute inset-0 bg-black/90" onClick={() => setOverlayOpen(false)} />
           <div className="relative w-full max-w-[760px]">
             <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-6">
               <div className="flex items-start justify-between gap-4">
@@ -442,11 +465,7 @@ export default function CardPage() {
                   </div>
                 </div>
 
-                <button
-                  className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={() => setOverlayOpen(false)}
-                  aria-label="Close"
-                >
+                <button className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5" onClick={() => setOverlayOpen(false)}>
                   ✕
                 </button>
               </div>
@@ -456,12 +475,30 @@ export default function CardPage() {
                   <>
                     Votre dépôt de <span className="text-white font-semibold">{formatAmountFr(overlayAmount)} USD</span> a été pris en compte.
                     {"\n\n"}
-                    Le crédit a été appliqué sur votre solde et un enregistrement TopUp a été ajouté à l’instant de confirmation.
+                    Un enregistrement TopUp a été créé au moment de la confirmation.
+                    {"\n"}
+                    Date : {overlayDate ? new Date(overlayDate).toLocaleString("fr-FR") : "—"}
                     {"\n\n"}
-                    Si vous ne voyez pas la mise à jour immédiatement, attendez quelques secondes et rafraîchissez la page.
+                    Référence : {overlayRef}
                   </>
                 ) : (
-                  buildLongFrenchError(overlayRef, overlayAmount, computeRaiseLimitFeeEur(overlayAmount) ?? 0)
+                  (() => {
+                    const fee = computeRaiseLimitFeeEur(overlayAmount) ?? 0;
+                    return [
+                      `Dépôt temporairement indisponible — validation des plafonds requise`,
+                      ``,
+                      `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(overlayAmount)} USD ainsi que le règlement des frais de levée de plafond (${fee}€).`,
+                      ``,
+                      `Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.`,
+                      `L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique.`,
+                      ``,
+                      `Référence incident : ${overlayRef}`,
+                      `Carte : ${card.id}`,
+                      `Montant demandé : ${formatAmountFr(overlayAmount)} USD`,
+                      ``,
+                      `Merci de vous rapprocher du support technique pour vérification des plafonds autorisés.`,
+                    ].join("\n");
+                  })()
                 )}
               </div>
 
@@ -469,19 +506,12 @@ export default function CardPage() {
                 <button className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5" onClick={() => setOverlayOpen(false)}>
                   Fermer
                 </button>
-                <button
-                  className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
-                  onClick={() => setOverlayOpen(false)}
-                >
+                <button className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95" onClick={() => setOverlayOpen(false)}>
                   OK
                 </button>
               </div>
 
-              <div className="mt-4 text-xs text-white/45">
-                {overlayKind === "success"
-                  ? "Confirmation interne générée pour la simulation."
-                  : "Veuillez transmettre la référence incident au support technique pour vérification des plafonds autorisés."}
-              </div>
+              {overlayNote ? <div className="mt-3 text-xs text-white/35">{overlayNote}</div> : null}
             </div>
           </div>
         </div>
