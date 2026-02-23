@@ -10,6 +10,8 @@ export type Transaction = {
   date: string; // ISO
 };
 
+issuanceFeeEur?: 150 | 250 | 400;
+
 export type Card = {
   id: string;
   name: string;
