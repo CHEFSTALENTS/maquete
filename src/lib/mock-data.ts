@@ -15,7 +15,6 @@ export type Card = {
   id: string;
   name: string;
 
-  // card display
   pan: string; // "1234 5678 9012 3456"
   cvv: string; // "123"
   ending: string;
@@ -23,21 +22,21 @@ export type Card = {
   holder: string;
   expires: string; // MM/YY
 
-  // balances / limits
   balance: number;
   depositUsed: number;
   depositLimit: number;
 
-  // history
   transactions: Transaction[];
   topups: Transaction[];
 
-  // optional: store issuance fee selection
   issuanceFeeEur?: 150 | 250 | 400;
 
-    // lifecycle
-  isActive?: boolean; // false = draft slot generated, true = activated
-  activationFeeEur?: 150 | 250 | 400; // fee paid at activation time
+  // ✅ per-card simulation toggle: only this card can fail limit validation
+  forceLimitFail?: boolean;
+
+  // (optional if you already use them elsewhere)
+  isActive?: boolean;
+  activationFeeEur?: 150 | 250 | 400;
 };
 
 export const cards: Card[] = [
