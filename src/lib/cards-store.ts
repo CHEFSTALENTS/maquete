@@ -2,6 +2,7 @@ import type { Card, Transaction } from "@/lib/mock-data";
 import { cards as seedCards } from "@/lib/mock-data";
 
 const LS_KEY = "solcard_mock_cards_v1";
+const LS_USED_HOLDERS_KEY = "solcard_mock_used_holders_v1";
 
 // ✅ keep your existing type
 export type FeeEur = 150 | 250 | 400;
@@ -32,42 +33,214 @@ function makeExpiry() {
   return `${mm}/${yy}`;
 }
 
-function randomHolder() {
-  const first = [
-    "Mathew",
-    "Julien",
-    "Lucas",
-    "Ethan",
-    "Maxime",
-    "Noah",
-    "Leo",
-    "Hugo",
-    "Nathan",
-    "Oscar",
-    "Mila",
-    "Lina",
-    "Emma",
-    "Chloe",
-    "Jade",
-  ];
-  const last = [
-    "Verbick",
-    "Dupont",
-    "Martin",
-    "Bernard",
-    "Moreau",
-    "Roux",
-    "Fournier",
-    "Girard",
-    "Lambert",
-    "Fontaine",
-    "Chevalier",
-    "Masson",
-  ];
-  return `${first[randInt(0, first.length - 1)]} ${
-    last[randInt(0, last.length - 1)]
-  }`.toUpperCase();
+/* ---------------------------------------------
+   ✅ Unique + international holder names
+---------------------------------------------- */
+
+type NamePool = {
+  first: string[];
+  last: string[];
+  // optional second-last name for cultures where common
+  last2?: string[];
+  // weight used for distribution
+  weight: number;
+};
+
+const NAME_POOLS: NamePool[] = [
+  // Western Europe / US
+  {
+    weight: 12,
+    first: [
+      "Mathew","Ethan","Noah","Lucas","Leo","Hugo","Maxime","Oscar","Emma","Mila","Jade","Chloe","Lina","Sarah","Olivia","Arthur","Louis","Gabriel",
+    ],
+    last: [
+      "Martin","Bernard","Moreau","Dubois","Thomas","Robert","Richard","Petit","Durand","Leroy","Fontaine","Lambert","Fournier","Girard","Dupont",
+      "Smith","Johnson","Brown","Miller","Davis","Wilson","Moore","Anderson",
+    ],
+  },
+
+  // Iberian / Latin
+  {
+    weight: 9,
+    first: [
+      "Sofia","Valentina","Camila","Isabella","Lucia","Mateo","Santiago","Diego","Alejandro","Carlos","Andres","Fernando","Mariana","Daniela",
+      "Joao","Tiago","Ines","Beatriz",
+    ],
+    last: [
+      "Garcia","Martinez","Rodriguez","Lopez","Gonzalez","Sanchez","Ramirez","Torres","Flores","Vargas","Castro","Silva","Santos","Ferreira","Pereira",
+    ],
+    last2: ["Diaz","Hernandez","Alvarez","Moreno","Navarro","Rojas","Costa","Araujo","Mendes"],
+  },
+
+  // Slavic / Eastern Europe
+  {
+    weight: 8,
+    first: ["Mila","Anya","Nina","Katya","Ivana","Marek","Jan","Jakub","Tomasz","Pavel","Mikhail","Dmitri","Andrej","Nikola"],
+    last: ["Novak","Kowalski","Nowak","Smirnov","Ivanov","Petrov","Sokolov","Kuznetsov","Popov","Jankovic","Kovac","Horvat"],
+  },
+
+  // Arabic / North Africa
+  {
+    weight: 9,
+    first: ["Omar","Youssef","Karim","Hassan","Rayan","Nour","Aya","Sara","Mariam","Lina","Imane","Amir","Samir","Leila","Salma"],
+    last: ["El Amrani","Benali","Haddad","Nasser","Khalil","Mansouri","Bouzid","Chafik","Farah","Said","Bouazza","El Khoury","Hamdi"],
+  },
+
+  // Turkish
+  {
+    weight: 6,
+    first: ["Emir","Kerem","Mert","Deniz","Eren","Elif","Aylin","Zeynep","Defne","Seda","Can","Yusuf"],
+    last: ["Yilmaz","Kaya","Demir","Sahin","Celik","Aydin","Arslan","Ozdemir","Kilic"],
+  },
+
+  // Persian / Iranian
+  {
+    weight: 4,
+    first: ["Amir","Reza","Arman","Kian","Darya","Nika","Sara","Mina","Parisa","Navid"],
+    last: ["Mohammadi","Hosseini","Karimi","Ahmadi","Rahimi","Jafari","Ebrahimi"],
+  },
+
+  // Indian / South Asia
+  {
+    weight: 10,
+    first: ["Arjun","Rohan","Ayaan","Vihaan","Rahul","Aditya","Karan","Priya","Ananya","Aisha","Isha","Meera","Sana","Neha","Kavya"],
+    last: ["Sharma","Patel","Singh","Kumar","Gupta","Iyer","Nair","Reddy","Das","Mehta","Khan"],
+  },
+
+  // East Asia (Chinese)
+  {
+    weight: 8,
+    first: ["Wei","Jia","Ying","Mei","Min","Chen","Hao","Tao","Jun","Li","Xiang","Yuan"],
+    last: ["Wang","Li","Zhang","Liu","Chen","Yang","Huang","Zhao","Wu","Zhou"],
+  },
+
+  // Japan
+  {
+    weight: 5,
+    first: ["Haruto","Yuto","Sota","Ren","Yuki","Sakura","Hina","Aoi","Rin","Akira","Kei"],
+    last: ["Sato","Suzuki","Takahashi","Tanaka","Watanabe","Ito","Yamamoto","Nakamura","Kobayashi"],
+  },
+
+  // Korea
+  {
+    weight: 4,
+    first: ["Minjun","Seo-jun","Jiho","Joon","Hyun","Soo","Yuna","Jisoo","Minseo","Seoyeon"],
+    last: ["Kim","Lee","Park","Choi","Jung","Kang","Yoon"],
+  },
+
+  // Southeast Asia
+  {
+    weight: 6,
+    first: ["Anh","Linh","Minh","Huy","Trang","Thao","Mai","Kiet","Arif","Rizky","Putri","Nadia","Jose","Maria","Paolo","Andrea"],
+    last: ["Nguyen","Tran","Le","Pham","Hoang","Vu","Lim","Tan","Santos","Reyes","Cruz","Garcia","Dela Cruz"],
+  },
+
+  // Sub-Saharan Africa (broad)
+  {
+    weight: 7,
+    first: ["Amina","Fatou","Mariam","Zainab","Khadija","Ibrahim","Moussa","Abdou","Chinedu","Kofi","Ama","Kwame","Nia","Ayodele","Tunde"],
+    last: ["Diallo","Traore","Keita","Diop","Mensah","Okafor","Adeyemi","Oluwaseun","Kamau","Njoroge","Mutiso"],
+  },
+];
+
+function weightedPickPool(): NamePool {
+  const total = NAME_POOLS.reduce((s, p) => s + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of NAME_POOLS) {
+    r -= p.weight;
+    if (r <= 0) return p;
+  }
+  return NAME_POOLS[0];
 }
+
+function readUsedHolders(): Set<string> {
+  const used = new Set<string>();
+
+  // 1) names already in seed + existing cards
+  try {
+    for (const c of seedCards) if (c?.holder) used.add(String(c.holder).toUpperCase().trim());
+  } catch {}
+
+  // 2) persisted used registry
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(LS_USED_HOLDERS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          for (const v of arr) if (typeof v === "string") used.add(v.toUpperCase().trim());
+        }
+      }
+    } catch {}
+  }
+
+  // 3) current cards store
+  try {
+    const current = loadCards();
+    for (const c of current) if (c?.holder) used.add(String(c.holder).toUpperCase().trim());
+  } catch {}
+
+  return used;
+}
+
+function persistUsedHolder(nameUpper: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const used = readUsedHolders();
+    used.add(nameUpper);
+    window.localStorage.setItem(LS_USED_HOLDERS_KEY, JSON.stringify(Array.from(used)));
+  } catch {
+    // ignore
+  }
+}
+
+function makeCandidateName(): string {
+  const pool = weightedPickPool();
+  const first = pool.first[randInt(0, pool.first.length - 1)];
+  const last = pool.last[randInt(0, pool.last.length - 1)];
+
+  // 30% chance to add second surname if available (for realism)
+  const useSecond = !!pool.last2 && Math.random() < 0.3;
+  const lastPart = useSecond
+    ? `${last} ${pool.last2![randInt(0, pool.last2!.length - 1)]}`
+    : last;
+
+  return `${first} ${lastPart}`.toUpperCase().replace(/\s+/g, " ").trim();
+}
+
+function generateUniqueHolderName(): string {
+  const used = readUsedHolders();
+
+  // try lots of combinations
+  for (let i = 0; i < 300; i++) {
+    const cand = makeCandidateName();
+    if (!used.has(cand)) {
+      persistUsedHolder(cand);
+      return cand;
+    }
+  }
+
+  // Fallback (should never happen): add middle initial to keep it human-looking
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for (let i = 0; i < 300; i++) {
+    const candBase = makeCandidateName();
+    const mid = letters[randInt(0, letters.length - 1)];
+    const cand = candBase.replace(" ", ` ${mid}. `).replace(/\s+/g, " ").trim();
+    if (!used.has(cand)) {
+      persistUsedHolder(cand);
+      return cand;
+    }
+  }
+
+  // ultimate fallback
+  const fallback = `CARD HOLDER ${Date.now().toString().slice(-6)}`.toUpperCase();
+  persistUsedHolder(fallback);
+  return fallback;
+}
+
+/* ---------------------------------------------
+   Storage
+---------------------------------------------- */
 
 export function loadCards(): Card[] {
   if (typeof window === "undefined") return seedCards;
@@ -110,8 +283,7 @@ function makeTopup(args: {
     id: `p-${Date.now()}-${randInt(100, 999)}`,
     type: "Auth",
     status: args.status,
-    description:
-      args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
+    description: args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
     amount: Number(args.amount.toFixed(2)),
     date: nowIso(),
     meta: { ref: args.ref, kind: "deposit", note: args.note },
@@ -135,7 +307,8 @@ export function createDraftCardForSlot(slot: string) {
     cvv: String(randInt(100, 999)),
     ending: last4,
 
-    holder: randomHolder(),
+    // ✅ NEW: unique international holder name
+    holder: generateUniqueHolderName(),
     expires: makeExpiry(),
 
     balance: 0,
