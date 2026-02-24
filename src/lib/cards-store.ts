@@ -47,99 +47,84 @@ type NamePool = {
 };
 
 const NAME_POOLS: NamePool[] = [
-  // Western Europe / US
+  // France (dominant)
   {
-    weight: 12,
+    weight: 22,
     first: [
-      "Mathew","Ethan","Noah","Lucas","Leo","Hugo","Maxime","Oscar","Emma","Mila","Jade","Chloe","Lina","Sarah","Olivia","Arthur","Louis","Gabriel",
+      "Louis","Gabriel","Arthur","Jules","Hugo","Raphael","Nathan","Lucas","Leo","Adam",
+      "Emma","Lina","Chloe","Jade","Louise","Camille","Manon","Sarah","Lea","Ines",
+      "Maxime","Antoine","Paul","Mathis","Ethan",
     ],
     last: [
-      "Martin","Bernard","Moreau","Dubois","Thomas","Robert","Richard","Petit","Durand","Leroy","Fontaine","Lambert","Fournier","Girard","Dupont",
-      "Smith","Johnson","Brown","Miller","Davis","Wilson","Moore","Anderson",
+      "Martin","Bernard","Thomas","Petit","Robert","Richard","Durand","Dubois","Moreau","Laurent",
+      "Simon","Michel","Lefevre","Garcia","Roux","Fournier","Girard","Lambert","Fontaine","Chevalier",
+      "Masson","Dupont",
     ],
   },
 
-  // Iberian / Latin
-  {
-    weight: 9,
-    first: [
-      "Sofia","Valentina","Camila","Isabella","Lucia","Mateo","Santiago","Diego","Alejandro","Carlos","Andres","Fernando","Mariana","Daniela",
-      "Joao","Tiago","Ines","Beatriz",
-    ],
-    last: [
-      "Garcia","Martinez","Rodriguez","Lopez","Gonzalez","Sanchez","Ramirez","Torres","Flores","Vargas","Castro","Silva","Santos","Ferreira","Pereira",
-    ],
-    last2: ["Diaz","Hernandez","Alvarez","Moreno","Navarro","Rojas","Costa","Araujo","Mendes"],
-  },
-
-  // Slavic / Eastern Europe
-  {
-    weight: 8,
-    first: ["Mila","Anya","Nina","Katya","Ivana","Marek","Jan","Jakub","Tomasz","Pavel","Mikhail","Dmitri","Andrej","Nikola"],
-    last: ["Novak","Kowalski","Nowak","Smirnov","Ivanov","Petrov","Sokolov","Kuznetsov","Popov","Jankovic","Kovac","Horvat"],
-  },
-
-  // Arabic / North Africa
-  {
-    weight: 9,
-    first: ["Omar","Youssef","Karim","Hassan","Rayan","Nour","Aya","Sara","Mariam","Lina","Imane","Amir","Samir","Leila","Salma"],
-    last: ["El Amrani","Benali","Haddad","Nasser","Khalil","Mansouri","Bouzid","Chafik","Farah","Said","Bouazza","El Khoury","Hamdi"],
-  },
-
-  // Turkish
-  {
-    weight: 6,
-    first: ["Emir","Kerem","Mert","Deniz","Eren","Elif","Aylin","Zeynep","Defne","Seda","Can","Yusuf"],
-    last: ["Yilmaz","Kaya","Demir","Sahin","Celik","Aydin","Arslan","Ozdemir","Kilic"],
-  },
-
-  // Persian / Iranian
-  {
-    weight: 4,
-    first: ["Amir","Reza","Arman","Kian","Darya","Nika","Sara","Mina","Parisa","Navid"],
-    last: ["Mohammadi","Hosseini","Karimi","Ahmadi","Rahimi","Jafari","Ebrahimi"],
-  },
-
-  // Indian / South Asia
+  // UK / Ireland
   {
     weight: 10,
-    first: ["Arjun","Rohan","Ayaan","Vihaan","Rahul","Aditya","Karan","Priya","Ananya","Aisha","Isha","Meera","Sana","Neha","Kavya"],
-    last: ["Sharma","Patel","Singh","Kumar","Gupta","Iyer","Nair","Reddy","Das","Mehta","Khan"],
+    first: ["James","William","Harry","George","Oliver","Jack","Noah","Leo","Charlie","Henry","Amelia","Olivia","Emily","Sophia","Grace","Ella"],
+    last: ["Smith","Johnson","Brown","Taylor","Wilson","Davies","Evans","Thomas","Roberts","Walker","Wright","Hall","Wood","Thompson"],
   },
 
-  // East Asia (Chinese)
+  // Espagne
   {
-    weight: 8,
-    first: ["Wei","Jia","Ying","Mei","Min","Chen","Hao","Tao","Jun","Li","Xiang","Yuan"],
-    last: ["Wang","Li","Zhang","Liu","Chen","Yang","Huang","Zhao","Wu","Zhou"],
+    weight: 10,
+    first: ["Sofia","Lucia","Martina","Paula","Carmen","Mateo","Hugo","Leo","Daniel","Alejandro","Carlos","Diego","Santiago"],
+    last: ["Garcia","Martinez","Rodriguez","Lopez","Gonzalez","Sanchez","Ramirez","Torres","Flores","Vargas"],
+    last2: ["Diaz","Hernandez","Alvarez","Moreno","Navarro","Rojas"],
   },
 
-  // Japan
+  // Italie
   {
-    weight: 5,
-    first: ["Haruto","Yuto","Sota","Ren","Yuki","Sakura","Hina","Aoi","Rin","Akira","Kei"],
-    last: ["Sato","Suzuki","Takahashi","Tanaka","Watanabe","Ito","Yamamoto","Nakamura","Kobayashi"],
+    weight: 9,
+    first: ["Giulia","Sofia","Chiara","Francesca","Martina","Lorenzo","Matteo","Leonardo","Andrea","Marco","Giuseppe","Federico"],
+    last: ["Rossi","Russo","Ferrari","Esposito","Bianchi","Romano","Colombo","Ricci","Marino","Greco","Conti"],
   },
 
-  // Korea
-  {
-    weight: 4,
-    first: ["Minjun","Seo-jun","Jiho","Joon","Hyun","Soo","Yuna","Jisoo","Minseo","Seoyeon"],
-    last: ["Kim","Lee","Park","Choi","Jung","Kang","Yoon"],
-  },
-
-  // Southeast Asia
+  // Portugal
   {
     weight: 6,
-    first: ["Anh","Linh","Minh","Huy","Trang","Thao","Mai","Kiet","Arif","Rizky","Putri","Nadia","Jose","Maria","Paolo","Andrea"],
-    last: ["Nguyen","Tran","Le","Pham","Hoang","Vu","Lim","Tan","Santos","Reyes","Cruz","Garcia","Dela Cruz"],
+    first: ["Joao","Tiago","Miguel","Rafael","Goncalo","Ines","Beatriz","Mariana","Carolina","Sofia"],
+    last: ["Silva","Santos","Ferreira","Pereira","Costa","Oliveira","Ribeiro","Carvalho"],
+    last2: ["Almeida","Sousa","Rodrigues","Martins"],
   },
 
-  // Sub-Saharan Africa (broad)
+  // Allemagne / Autriche / Suisse alémanique
   {
     weight: 7,
-    first: ["Amina","Fatou","Mariam","Zainab","Khadija","Ibrahim","Moussa","Abdou","Chinedu","Kofi","Ama","Kwame","Nia","Ayodele","Tunde"],
-    last: ["Diallo","Traore","Keita","Diop","Mensah","Okafor","Adeyemi","Oluwaseun","Kamau","Njoroge","Mutiso"],
+    first: ["Lukas","Leon","Finn","Noah","Paul","Felix","Emilia","Mia","Hannah","Lea","Sophia","Lena"],
+    last: ["Muller","Schmidt","Schneider","Fischer","Weber","Meyer","Wagner","Becker","Hoffmann","Schulz","Koch"],
+  },
+
+  // Benelux (NL/BE)
+  {
+    weight: 6,
+    first: ["Daan","Sem","Milan","Bram","Liam","Noah","Emma","Sanne","Lotte","Julia","Mila"],
+    last: ["De Vries","Van Dijk","Bakker","Jansen","Visser","Smit","Van den Berg","Peeters","Janssens","Willems"],
+  },
+
+  // Scandinavie (SE/NO/DK/FI) – léger
+  {
+    weight: 5,
+    first: ["Oscar","Elias","Noah","William","Lucas","Maja","Ella","Alma","Freja","Ida","Sofia"],
+    last: ["Johansson","Andersen","Nielsen","Hansen","Larsen","Karlsson","Svensson","Olsen","Lindberg","Eriksson"],
+  },
+
+  // Europe de l’Est (PL/CZ/RO/HU) – léger
+  {
+    weight: 5,
+    first: ["Jakub","Jan","Mateusz","Tomasz","Pavel","Andrei","Marek","Anna","Klara","Zofia","Elena","Ivana"],
+    last: ["Nowak","Kowalski","Novak","Dvorak","Popescu","Ionescu","Horvat","Kovac","Nagy","Szabo"],
+  },
+
+  // ✅ petite touche "international" très rare (pour ne pas être 100% Europe)
+  {
+    weight: 1,
+    first: ["Omar","Youssef","Mariam","Nour","Karim","Amina"],
+    last: ["Haddad","Nasser","Mansouri","Benali","Farah","Said"],
   },
 ];
 
