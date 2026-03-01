@@ -402,3 +402,15 @@ export function recordDepositAttempt(
     };
   });
 }
+export function transferFromMaster(
+  cards: Card[],
+  masterId: string,
+  toId: string,
+  amount: number
+): { next: Card[]; ref: string; error?: string } {
+  // Tu peux reprendre exactement la fonction inline `transferFromMasterLocal`
+  // (copier-coller tel quel) et l’exporter ici.
+  // Ensuite dans page.tsx tu remplaces `transferFromMasterLocal(...)`
+  // par `transferFromMaster(...)`.
+  return { next: cards, ref: "", error: "Not implemented" };
+}
