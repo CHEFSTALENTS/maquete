@@ -759,7 +759,7 @@ const successMessage =
   aria-label="Next card"
 >
   →
-</button
+</button>
         </div>
 
         {/* usage bar */}
