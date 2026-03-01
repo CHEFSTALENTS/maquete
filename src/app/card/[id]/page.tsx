@@ -390,10 +390,99 @@ function rand(min: number, max: number) {
 }
 
 function randomDateIsoLast3Days() {
-  const now = new Date();
-  const offsetHours = Math.floor(Math.random() * 72);
-  now.setHours(now.getHours() - offsetHours);
-  return now.toISOString();
+  // max 96h (3 à 4 jours) avant maintenant
+  const now = Date.now();
+  const maxMs = 96 * 60 * 60 * 1000;
+  const t = now - Math.floor(Math.random() * maxMs);
+
+  const dt = new Date(t);
+
+  // heure réaliste (7h-22h)
+  const hour = Math.floor(rand(7, 23));
+  const minute = Math.floor(rand(0, 60));
+  const second = Math.floor(rand(0, 60));
+  dt.setHours(hour, minute, second, 0);
+
+  return dt.toISOString();
+}
+
+function addFakeTx() {
+  const amt = parseAmount(txAmount);
+  if (!Number.isFinite(amt)) return;
+
+  const next = addFakeTransactionToCard(allCards, card.id, {
+    description: txDesc,
+    amount: amt,
+    status: txStatus,
+    type: "Auth",
+  });
+
+  setAllCards(next);
+  saveCards(next);
+  setTxOpen(false);
+}
+
+function generateAutoTransactions(count: number) {
+  let next = allCards;
+
+  for (let i = 0; i < count; i++) {
+    const r = Math.random();
+
+    let description = "";
+    let amount = 0;
+
+    // majorité "vie réelle" + parfois plaisir, et rare luxe/voyage/crypto
+    if (r < 0.28) {
+      description = pick(GROCERIES);
+      amount = rand(8, 95);
+    } else if (r < 0.40) {
+      description = pick(BAKERIES_CAFES);
+      amount = rand(4, 28);
+    } else if (r < 0.58) {
+      description = pick(RESTAURANTS);
+      amount = rand(12, 140);
+    } else if (r < 0.70) {
+      description = pick(TRANSPORTS);
+      amount = rand(2.2, 180);
+    } else if (r < 0.80) {
+      description = pick(FUEL_PARKING);
+      amount = rand(25, 140);
+    } else if (r < 0.88) {
+      description = pick(ECOM_DELIVERY);
+      amount = rand(12, 220);
+    } else if (r < 0.93) {
+      description = pick(HEALTH);
+      amount = rand(9, 160);
+    } else if (r < 0.965) {
+      description = pick(SHOPPING);
+      amount = rand(18, 260);
+    } else if (r < 0.985) {
+      description = pick(TRAVEL);
+      amount = rand(450, 980);
+    } else if (r < 0.995) {
+      description = pick(LUXURY);
+      amount = rand(180, 950);
+    } else {
+      description = pick(CRYPTO);
+      amount = rand(80, 800);
+    }
+
+    const status: "Succeed" | "Failed" = Math.random() < 0.06 ? "Failed" : "Succeed";
+
+    // IMPORTANT : on force une date cohérente (3-4 jours max avant maintenant)
+    // et on reste "non-invasif" côté types en castant juste ici.
+    next = addFakeTransactionToCard(next, card.id, {
+      description,
+      amount: Number(amount.toFixed(2)),
+      status,
+      type: "Auth",
+      date: randomDateIsoLast3Days(),
+    } as any);
+  }
+
+  setAllCards(next);
+  saveCards(next);
+}
 }
 /* ------------------ page ------------------ */
 
