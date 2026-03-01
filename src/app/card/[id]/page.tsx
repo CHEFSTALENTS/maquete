@@ -62,6 +62,32 @@ function txId(prefix = "t") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
 }
 
+// ---------- Confirmation page helpers (like screenshot) ----------
+function moneyUs(n: number) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+function fakeSolFromUsd(usd: number) {
+  // mock rate to look real (no API)
+  const rate = 127.6; // 1 SOL ≈ 127.6 USD
+  const sol = usd / rate;
+  return sol.toFixed(8);
+}
+
+function invoiceIdFromRef(ref: string) {
+  const base = String(ref || "ref").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return `cmk${base.slice(-8)}${Date.now().toString(36)}${Math.floor(
+    Math.random() * 9999
+  ).toString(36)}`;
+}
+
 // ✅ helper transfert (inline, sans dépendre d’un autre fichier)
 function transferFromMasterLocal(args: {
   cards: Card[];
@@ -85,7 +111,11 @@ function transferFromMasterLocal(args: {
     return { next: cards, ref: "", error: "Carte introuvable." };
   }
   if ((master.balance ?? 0) < amt) {
-    return { next: cards, ref: "", error: "Solde insuffisant sur la carte principale." };
+    return {
+      next: cards,
+      ref: "",
+      error: "Solde insuffisant sur la carte principale.",
+    };
   }
 
   const ref = makeIncidentRef("TRF");
@@ -123,8 +153,6 @@ function transferFromMasterLocal(args: {
       return {
         ...c,
         balance: Number(((c.balance ?? 0) + amt).toFixed(2)),
-        // tu peux aussi incrémenter depositUsed si tu veux que la jauge bouge :
-        // depositUsed: Number(((c.depositUsed ?? 0) + amt).toFixed(2)),
         transactions: [destTx, ...(c.transactions ?? [])],
       };
     }
@@ -156,7 +184,7 @@ export default function CardPage() {
   const { g1, g2, g3, g4 } = splitPan(pan);
 
   // ----------------------------
-  // Deposit modal state (ton flow actuel)
+  // Deposit modal state
   // ----------------------------
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>("2500");
@@ -167,13 +195,13 @@ export default function CardPage() {
 
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  // per-card toggle local (discret)
+  // per-card toggle local (HIDDEN)
   const [forceFailLocal, setForceFailLocal] = useState<boolean>(
-    !!card.forceLimitFail
+    !!(card as any).forceLimitFail
   );
 
   useEffect(() => {
-    setForceFailLocal(!!card.forceLimitFail);
+    setForceFailLocal(!!(card as any).forceLimitFail);
   }, [card?.id]);
 
   const amountNum = parseAmount(depositAmount);
@@ -182,7 +210,7 @@ export default function CardPage() {
     : null;
 
   // ----------------------------
-  // Overlay (Success / Error)
+  // Overlay (Success / Error) - unified design
   // ----------------------------
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayKind, setOverlayKind] = useState<"success" | "error">("success");
@@ -190,8 +218,11 @@ export default function CardPage() {
   const [overlayAmount, setOverlayAmount] = useState(0);
   const [overlayDate, setOverlayDate] = useState("");
   const [overlayNote, setOverlayNote] = useState("");
-const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("deposit");
-  
+  const [overlayContext, setOverlayContext] = useState<
+    "deposit" | "transfer"
+  >("deposit");
+
+  // listen to clickable topups from TransactionsTable
   useEffect(() => {
     function onOpen(e: any) {
       const d = e?.detail;
@@ -204,11 +235,13 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
       setOverlayAmount(Number(d.amount ?? 0));
       setOverlayDate(String(d.date ?? ""));
       setOverlayNote(String(d.note ?? ""));
+      setOverlayContext("deposit"); // topups table -> deposit context
       setOverlayOpen(true);
     }
 
     window.addEventListener("solcard:topup:open", onOpen as any);
-    return () => window.removeEventListener("solcard:topup:open", onOpen as any);
+    return () =>
+      window.removeEventListener("solcard:topup:open", onOpen as any);
   }, []);
 
   function openDeposit() {
@@ -251,7 +284,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
       await new Promise((r) => setTimeout(r, 550));
 
       const ref = makeIncidentRef("INC");
-      const ok = !card.forceLimitFail; // ✅ per-card control
+      const ok = !(card as any).forceLimitFail; // ✅ per-card control
 
       const next = recordDepositAttempt(allCards, card.id, n, ok, ref);
       setAllCards(next);
@@ -259,6 +292,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
 
       setDepositOpen(false);
 
+      setOverlayContext("deposit");
       setOverlayKind(ok ? "success" : "error");
       setOverlayRef(ref);
       setOverlayAmount(n);
@@ -278,7 +312,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
   }
 
   // ----------------------------
-  // ✅ TRANSFER (Master -> any card) : NEW
+  // ✅ TRANSFER (Master -> any card)
   // ----------------------------
   const MASTER_ID = "solcard-2";
   const masterCard = useMemo(() => {
@@ -292,7 +326,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
   const [transferError, setTransferError] = useState<string>("");
 
   const transferTargets = useMemo(() => {
-    // toutes les cartes sauf la master
+    // all cards except master
     return allCards.filter((c) => c.id !== masterCard?.id);
   }, [allCards, masterCard?.id]);
 
@@ -300,8 +334,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
     setTransferOpen(true);
     setTransferAmount("500");
     setTransferError("");
-    // par défaut, si tu es sur la master, on pré-sélectionne la 1ère autre carte
-    // sinon on pré-sélectionne la carte courante (si elle n’est pas master)
+
     const preferred =
       card.id !== masterCard?.id ? card.id : transferTargets[0]?.id ?? "";
     setTransferToId(preferred);
@@ -327,7 +360,7 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
     try {
       await new Promise((r) => setTimeout(r, 450));
 
-      const { next, error } = transferFromMasterLocal({
+      const { next, ref, error } = transferFromMasterLocal({
         cards: allCards,
         masterId: masterCard.id,
         toId: transferToId,
@@ -343,54 +376,19 @@ const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("de
       saveCards(next);
       setTransferOpen(false);
 
-    setTransferOpen(false);
+      const dest = allCards.find((c) => c.id === transferToId);
 
-// ✅ Overlay = même design que dépôt réussi
-setOverlayContext("transfer");
-{overlayKind === "success" ? (
-  <>
-    Votre {overlayContext === "transfer" ? "transfert" : "dépôt"} de{" "}
-    <span className="text-white font-semibold">
-      {formatAmountFr(overlayAmount)} USD
-    </span>{" "}
-    a été pris en compte.
-    {"\n\n"}
-    Un enregistrement {overlayContext === "transfer" ? "Transaction" : "TopUp"} a été créé au moment de la confirmation.
-    {"\n"}
-    Date : {overlayDate ? new Date(overlayDate).toLocaleString("fr-FR") : "—"}
-    {"\n\n"}
-    Référence : {overlayRef}
-    {overlayNote ? `\n\n${overlayNote}` : ""}
-  </>
-) : (
-  // (ta partie erreur inchangée)
-  (() => {
-    const fee = computeRaiseLimitFeeEur(overlayAmount) ?? 0;
-    return [
-      `Dépôt temporairement indisponible — validation des plafonds requise`,
-      ``,
-      `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(overlayAmount)} USD ainsi que le règlement des frais de levée de plafond (${fee}€).`,
-      ``,
-      `Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.`,
-      `L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique.`,
-      ``,
-      `Référence incident : ${overlayRef}`,
-      `Carte : ${card.id}`,
-      `Montant demandé : ${formatAmountFr(overlayAmount)} USD`,
-      ``,
-      `Merci de vous rapprocher du support technique pour vérification des plafonds autorisés.`,
-    ].join("\n");
-  })()
-)}
-      setOverlayRef(makeIncidentRef("TRF"));
-setOverlayAmount(n);
-setOverlayDate(new Date().toISOString());
-setOverlayNote(
-  `Transfert effectué depuis •••• ${masterCard.ending} vers •••• ${
-    allCards.find((c) => c.id === transferToId)?.ending ?? "----"
-  }`
-);
-setOverlayOpen(true);
+      setOverlayContext("transfer");
+      setOverlayKind("success");
+      setOverlayRef(ref || makeIncidentRef("TRF"));
+      setOverlayAmount(n);
+      setOverlayDate(new Date().toISOString());
+      setOverlayNote(
+        `Transfer completed from •••• ${masterCard.ending} to •••• ${
+          dest?.ending ?? "----"
+        }`
+      );
+      setOverlayOpen(true);
     } finally {
       setTransferLoading(false);
     }
@@ -418,7 +416,6 @@ setOverlayOpen(true);
               Deposit
             </button>
 
-            {/* ✅ Transfer button now works */}
             <button
               onClick={openTransfer}
               className="h-10 px-5 rounded-lg bg-white/0 border border-white/15 text-sm opacity-90 hover:bg-white/5 transition"
@@ -598,14 +595,20 @@ setOverlayOpen(true);
       {/* ---------------------- */}
       {transferOpen && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/95" onClick={closeTransfer} />
+          <div
+            className="absolute inset-0 bg-black/95"
+            onClick={closeTransfer}
+          />
           <div className="relative w-full max-w-[620px]">
             <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-lg font-semibold">Transfer</div>
                   <div className="text-sm opacity-70 mt-1">
-                    Source : <span className="font-semibold">Main account •••• {masterCard.ending}</span>
+                    Source :{" "}
+                    <span className="font-semibold">
+                      Main account •••• {masterCard.ending}
+                    </span>
                   </div>
                 </div>
                 <button
@@ -687,7 +690,7 @@ setOverlayOpen(true);
       )}
 
       {/* ---------------------- */}
-      {/* ✅ DEPOSIT MODAL (ton modal actuel inchangé) */}
+      {/* ✅ DEPOSIT MODAL */}
       {/* ---------------------- */}
       {depositOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
@@ -699,7 +702,8 @@ setOverlayOpen(true);
                 <div>
                   <div className="text-lg font-semibold">Deposit</div>
                   <div className="text-sm opacity-70 mt-1">
-                    Pour déposer, vous devez lever le plafond (validation manuelle).
+                    Pour déposer, vous devez lever le plafond (validation
+                    manuelle).
                   </div>
                 </div>
                 <button
@@ -737,11 +741,11 @@ setOverlayOpen(true);
                   </div>
                 </div>
 
-                {/* toggle discret pour échec plafond (par carte) */}
+                {/* HIDDEN toggle for limit failure (per card) */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium"> </div>
+                    <div className="text-xs text-white/35">
+                      {/* intentionally blank / hidden */}
                     </div>
 
                     <button
@@ -749,18 +753,21 @@ setOverlayOpen(true);
                       onClick={() => onToggleFailForThisCard(!forceFailLocal)}
                       className={
                         forceFailLocal
-                          ? "h-9 px-3 rounded-lg bg-rose-200 text-black text-sm font-medium"
-                          : "h-9 px-3 rounded-lg bg-white/10 border border-white/10 text-sm"
+                          ? "h-9 px-3 rounded-lg bg-rose-200 text-black text-sm font-medium opacity-0 pointer-events-auto"
+                          : "h-9 px-3 rounded-lg bg-white/10 border border-white/10 text-sm opacity-0 pointer-events-auto"
                       }
+                      aria-label="(hidden) Toggle limit failure"
                       title="(interne) Toggle échec plafond"
                     >
-                      {forceFailLocal ? " " : " "}
+                      {forceFailLocal ? "ON" : "OFF"}
                     </button>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs opacity-70">Frais de levée de plafond</div>
+                  <div className="text-xs opacity-70">
+                    Frais de levée de plafond
+                  </div>
 
                   {!Number.isFinite(amountNum) ? (
                     <div className="mt-1 text-sm text-white/60">
@@ -791,7 +798,9 @@ setOverlayOpen(true);
                         className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
                         onClick={payRaiseLimitFee}
                         disabled={
-                          feeLoading || raiseFee === null || !Number.isFinite(amountNum)
+                          feeLoading ||
+                          raiseFee === null ||
+                          !Number.isFinite(amountNum)
                         }
                       >
                         {feeLoading ? "Traitement..." : "Payer les frais"}
@@ -815,93 +824,237 @@ setOverlayOpen(true);
         </div>
       )}
 
-      {/* Overlay page (success/error) */}
+      {/* ---------------------- */}
+      {/* ✅ CONFIRMATION OVERLAY (same design as screenshot) */}
+      {/* ---------------------- */}
       {overlayOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
           <div
             className="absolute inset-0 bg-black/90"
             onClick={() => setOverlayOpen(false)}
           />
-          <div className="relative w-full max-w-[760px]">
-            <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div
-                    className={`text-lg font-semibold ${
-                      overlayKind === "success"
-                        ? "text-emerald-200/90"
-                        : "text-rose-200/90"
-                    }`}
-                  >
-                    {overlayKind === "success"
-                      ? "Confirmation"
-                      : "Erreur de validation des plafonds"}
-                  </div>
-                  <div className="text-xs text-white/45 mt-1">
-                    Référence : <span className="font-mono">{overlayRef}</span>
+
+          {/* narrower to match mobile look */}
+          <div className="relative w-full max-w-[620px]">
+            {/* toast (only on success, like screenshot) */}
+            {overlayKind === "success" && (
+              <div className="absolute -top-16 left-0 right-0 mx-auto w-full max-w-[620px]">
+                <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_20px_70px_rgba(0,0,0,0.75)] px-5 py-4">
+                  <div className="text-sm font-semibold">Success</div>
+                  <div className="text-sm text-white/70 mt-1">
+                    Payment received.
                   </div>
                 </div>
-
-                <button
-                  className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={() => setOverlayOpen(false)}
-                >
-                  ✕
-                </button>
               </div>
+            )}
 
-              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 leading-6 whitespace-pre-line">
+            <div className="rounded-3xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] overflow-hidden">
+              <div className="relative px-6 pt-8 pb-6">
+                {/* simple confetti (success only) */}
+                <style jsx>{`
+                  @keyframes fall {
+                    0% {
+                      transform: translateY(-40px) rotate(0deg);
+                      opacity: 0;
+                    }
+                    10% {
+                      opacity: 1;
+                    }
+                    100% {
+                      transform: translateY(420px) rotate(360deg);
+                      opacity: 0;
+                    }
+                  }
+                  .confetti {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 0;
+                    pointer-events: none;
+                  }
+                  .confetti span {
+                    position: absolute;
+                    width: 10px;
+                    height: 6px;
+                    border-radius: 2px;
+                    opacity: 0.9;
+                    animation: fall 1.8s linear infinite;
+                  }
+                `}</style>
+
+                {overlayKind === "success" && (
+                  <div className="confetti">
+                    {Array.from({ length: 18 }).map((_, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          left: `${(i * 100) / 18}%`,
+                          background:
+                            i % 3 === 0
+                              ? "#22c55e"
+                              : i % 3 === 1
+                              ? "#60a5fa"
+                              : "#f59e0b",
+                          animationDelay: `${(i % 6) * 0.12}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* top right close */}
+                <div className="flex items-start justify-between">
+                  <div className="text-sm font-semibold text-white/80">
+                    {overlayKind === "success"
+                      ? "Payment Succeeded!"
+                      : "Payment Failed"}
+                  </div>
+
+                  <button
+                    className="h-9 w-9 rounded-xl border border-white/10 hover:bg-white/5 flex items-center justify-center"
+                    onClick={() => setOverlayOpen(false)}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
                 {overlayKind === "success" ? (
                   <>
-                    Montant :{" "}
-                    <span className="text-white font-semibold">
-                      {formatAmountFr(overlayAmount)} USD
-                    </span>
-                    {"\n"}
-                    Date :{" "}
-                    {overlayDate
-                      ? new Date(overlayDate).toLocaleString("fr-FR")
-                      : "—"}
-                    {"\n"}
-                    Référence : {overlayRef}
-                    {overlayNote ? `\n\n${overlayNote}` : ""}
+                    {/* big check */}
+                    <div className="mt-8 flex justify-center">
+                      <div className="h-28 w-28 rounded-full bg-emerald-500 flex items-center justify-center shadow-[0_25px_60px_rgba(16,185,129,0.25)]">
+                        <svg
+                          width="54"
+                          height="54"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="2.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* title */}
+                    <div className="mt-8 text-center">
+                      <div className="text-3xl font-semibold leading-tight">
+                        {overlayContext === "transfer"
+                          ? "Your transfer has been completed successfully."
+                          : "Your card has been recharged successfully."}
+                      </div>
+
+                      <div className="mt-4 text-white/50">
+                        Invoice ID:{" "}
+                        <span className="text-white/70 font-mono">
+                          {invoiceIdFromRef(overlayRef)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* divider */}
+                    <div className="mt-8 h-px bg-white/10" />
+
+                    {/* table */}
+                    <div className="mt-6 grid grid-cols-2 gap-y-4 text-white/70">
+                      <div className="text-sm">Card Recharge Amount</div>
+                      <div className="text-sm text-right text-white/90 font-semibold">
+                        ${moneyUs(overlayAmount)}
+                      </div>
+
+                      <div className="text-sm">
+                        {overlayContext === "transfer"
+                          ? "Transfer Fee"
+                          : "Deposit Fee"}
+                      </div>
+                      <div className="text-sm text-right text-white/90 font-semibold">
+                        ${moneyUs(0)}
+                      </div>
+
+                      <div className="text-sm">Card Opening Fee</div>
+                      <div className="text-sm text-right text-white/90 font-semibold">
+                        ${moneyUs(10)}
+                      </div>
+
+                      <div className="text-sm">
+                        {overlayContext === "transfer"
+                          ? "Transfer Amount"
+                          : "Deposit Amount"}
+                      </div>
+                      <div className="text-sm text-right text-white/90 font-semibold">
+                        {fakeSolFromUsd(overlayAmount)} SOL
+                      </div>
+
+                      <div className="text-sm">Invoice Date</div>
+                      <div className="text-sm text-right text-white/90 font-semibold">
+                        {overlayDate
+                          ? new Date(overlayDate).toLocaleString("en-GB")
+                          : "—"}
+                      </div>
+                    </div>
+
+                    {/* button */}
+                    <div className="mt-8">
+                      <button
+                        className="w-full h-12 rounded-2xl bg-white text-black font-medium hover:opacity-95 transition"
+                        onClick={() => setOverlayOpen(false)}
+                      >
+                        View your SolCard
+                      </button>
+                    </div>
+
+                    <div className="mt-4 text-center text-xs text-white/35">
+                      {overlayRef ? `Ref: ${overlayRef}` : ""}
+                      {overlayNote ? ` • ${overlayNote}` : ""}
+                    </div>
                   </>
                 ) : (
-                  (() => {
-                    const fee = computeRaiseLimitFeeEur(overlayAmount) ?? 0;
-                    return [
-                      `Dépôt temporairement indisponible — validation des plafonds requise`,
-                      ``,
-                      `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(
-                        overlayAmount
-                      )} USD ainsi que le règlement des frais de levée de plafond (${fee}€).`,
-                      ``,
-                      `Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.`,
-                      `L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique.`,
-                      ``,
-                      `Référence incident : ${overlayRef}`,
-                      `Carte : ${card.id}`,
-                      `Montant demandé : ${formatAmountFr(overlayAmount)} USD`,
-                      ``,
-                      `Merci de vous rapprocher du support technique pour vérification des plafonds autorisés.`,
-                    ].join("\n");
-                  })()
-                )}
-              </div>
+                  <>
+                    {/* ERROR: keep long french message */}
+                    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 leading-6 whitespace-pre-line">
+                      {(() => {
+                        const fee = computeRaiseLimitFeeEur(overlayAmount) ?? 0;
+                        return [
+                          `Dépôt temporairement indisponible — validation des plafonds requise`,
+                          ``,
+                          `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(
+                            overlayAmount
+                          )} USD ainsi que le règlement des frais de levée de plafond (${fee}€).`,
+                          ``,
+                          `Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.`,
+                          `L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique.`,
+                          ``,
+                          `Référence incident : ${overlayRef}`,
+                          `Carte : ${card.id}`,
+                          `Montant demandé : ${formatAmountFr(
+                            overlayAmount
+                          )} USD`,
+                          ``,
+                          `Merci de vous rapprocher du support technique pour vérification des plafonds autorisés.`,
+                        ].join("\n");
+                      })()}
+                    </div>
 
-              <div className="mt-5 flex items-center justify-end gap-3">
-                <button
-                  className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
-                  onClick={() => setOverlayOpen(false)}
-                >
-                  Fermer
-                </button>
-                <button
-                  className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
-                  onClick={() => setOverlayOpen(false)}
-                >
-                  OK
-                </button>
+                    <div className="mt-5 flex items-center justify-end gap-3">
+                      <button
+                        className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+                        onClick={() => setOverlayOpen(false)}
+                      >
+                        Fermer
+                      </button>
+                      <button
+                        className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
+                        onClick={() => setOverlayOpen(false)}
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
