@@ -550,9 +550,68 @@ const currentIndex = useMemo(() => {
     saveCards(next);
     setTxOpen(false);
   }
+    // -------- City lock per card (more realistic) --------
+  const CITY_POOL = [
+    "PARIS",
+    "LYON",
+    "MARSEILLE",
+    "NICE",
+    "TOULOUSE",
+    "NANTES",
+    "STRASBOURG",
+    "LILLE",
+    "RENNES",
+    "MONTPELLIER",
+    "DIJON",
+    "GRENOBLE",
+    "ANGERS",
+    "LA ROCHELLE",
+  ] as const;
+
+  type City = (typeof CITY_POOL)[number];
+
+  function getCityForCard(cardId: string): City {
+    // stable per card (persisted)
+    const key = `solcard:cardCity:${cardId}`;
+    if (typeof window === "undefined") return "PARIS";
+
+    const existing = window.localStorage.getItem(key);
+    if (existing && (CITY_POOL as readonly string[]).includes(existing)) {
+      return existing as City;
+    }
+
+    const chosen = CITY_POOL[Math.floor(Math.random() * CITY_POOL.length)] as City;
+    window.localStorage.setItem(key, chosen);
+    return chosen;
+  }
+
+  function normalize(s: string) {
+    return (s ?? "")
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toUpperCase();
+  }
+
+  function merchantMatchesCity(merchant: string, city: City) {
+    const m = normalize(merchant);
+    const c = normalize(city);
+
+    // Si le merchant contient une autre ville explicite, on l’exclut
+    const hasSomeCity = CITY_POOL.some((cc) => m.includes(normalize(cc)));
+    if (!hasSomeCity) return true; // merchant "générique" => OK partout
+
+    // Sinon il doit matcher la city de la carte
+    return m.includes(c);
+  }
+
+  function pickByCity(list: string[], city: City) {
+    const filtered = list.filter((x) => merchantMatchesCity(x, city));
+    // fallback si jamais liste vide
+    return pick(filtered.length ? filtered : list);
+  }
   function generateAutoTransactions(count: number) {
     let next = allCards;
-
+    const city = getCityForCard(card.id);
     for (let i = 0; i < count; i++) {
       const r = Math.random();
 
