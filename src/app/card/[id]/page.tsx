@@ -584,11 +584,12 @@ const currentIndex = useMemo(() => {
     window.localStorage.setItem(key, chosen);
     return chosen;
   }
-
   function normalize(s: string) {
+    // Compatible anciens targets (pas de \p{Diacritic})
+    // Enlève les diacritiques via la plage Unicode "combining marks"
     return (s ?? "")
       .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
+      .replace(/[\u0300-\u036f]/g, "")
       .toUpperCase();
   }
 
