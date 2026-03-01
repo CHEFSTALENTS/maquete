@@ -15,12 +15,7 @@ import {
   addFakeTransactionToCard,
 } from "@/lib/cards-store";
 import type { Card, Transaction } from "@/lib/mock-data";
-import {
-  loadCards,
-  saveCards,
-  recordDepositAttempt,
-  setCardForceLimitFail,
-} from "@/lib/cards-store";
+
 
 /* ------------------ helpers ------------------ */
 
