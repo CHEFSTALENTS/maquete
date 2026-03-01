@@ -160,25 +160,27 @@ function transferFromMasterLocal(args: {
 
 export default function CardPage() {
   const params = useParams<{ id: string }>();
-// ordre stable des cartes (comme dans le dashboard/localStorage)
-const cardIds = useMemo(() => allCards.map((c) => c.id), [allCards]);
 
-const currentIndex = useMemo(() => {
-  const id = params?.id;
-  const idx = id ? cardIds.indexOf(id) : 0;
-  return idx >= 0 ? idx : 0;
-}, [params?.id, cardIds]);
-
-function goToCardIndex(nextIdx: number) {
-  if (!cardIds.length) return;
-  const wrapped = (nextIdx + cardIds.length) % cardIds.length; // boucle
-  const nextId = cardIds[wrapped];
-  if (!nextId) return;
-  window.location.href = `/card/${nextId}`; // simple + fiable côté client
-}
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
 
+  // ordre stable des cartes (comme dans le dashboard/localStorage)
+  const cardIds = useMemo(() => allCards.map((c) => c.id), [allCards]);
+
+  
+const currentIndex = useMemo(() => {
+    const id = params?.id;
+    const idx = id ? cardIds.indexOf(id) : 0;
+    return idx >= 0 ? idx : 0;
+  }, [params?.id, cardIds]);
+
+  function goToCardIndex(nextIdx: number) {
+    if (!cardIds.length) return;
+    const wrapped = (nextIdx + cardIds.length) % cardIds.length; // boucle
+    const nextId = cardIds[wrapped];
+    if (!nextId) return;
+    window.location.href = `/card/${nextId}`;
+  }
   useEffect(() => {
     setAllCards(loadCards());
   }, []);
