@@ -483,7 +483,7 @@ function generateAutoTransactions(count: number) {
   setAllCards(next);
   saveCards(next);
 }
-}
+
 /* ------------------ page ------------------ */
 
 export default function CardPage() {
