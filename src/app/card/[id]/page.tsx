@@ -158,7 +158,22 @@ function transferFromMasterLocal(args: {
 
 export default function CardPage() {
   const params = useParams<{ id: string }>();
+// ordre stable des cartes (comme dans le dashboard/localStorage)
+const cardIds = useMemo(() => allCards.map((c) => c.id), [allCards]);
 
+const currentIndex = useMemo(() => {
+  const id = params?.id;
+  const idx = id ? cardIds.indexOf(id) : 0;
+  return idx >= 0 ? idx : 0;
+}, [params?.id, cardIds]);
+
+function goToCardIndex(nextIdx: number) {
+  if (!cardIds.length) return;
+  const wrapped = (nextIdx + cardIds.length) % cardIds.length; // boucle
+  const nextId = cardIds[wrapped];
+  if (!nextId) return;
+  window.location.href = `/card/${nextId}`; // simple + fiable côté client
+}
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
 
@@ -602,11 +617,14 @@ export default function CardPage() {
         {/* card area */}
         <div className="mt-10 flex items-center justify-center gap-10">
           <button
-            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-            aria-label="Previous card"
-          >
-            ←
-          </button>
+  onClick={() => goToCardIndex(currentIndex - 1)}
+  className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+  aria-label="Previous card"
+>
+  ←
+</button>
+
+
 
           <div className="relative w-full max-w-[480px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-[#16181d] shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/40" />
@@ -692,11 +710,12 @@ export default function CardPage() {
           </div>
 
           <button
-            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-            aria-label="Next card"
-          >
-            →
-          </button>
+  onClick={() => goToCardIndex(currentIndex + 1)}
+  className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+  aria-label="Next card"
+>
+  →
+</button
         </div>
 
         {/* usage bar */}
