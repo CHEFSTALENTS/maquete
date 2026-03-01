@@ -155,7 +155,73 @@ function transferFromMasterLocal(args: {
 
   return { next, ref };
 }
+/* ------------------ REALISTIC MERCHANTS ------------------ */
 
+const RESTAURANTS = [
+  "BRASSERIE LIPP PARIS FR",
+  "LE RELAIS DE L’ENTRECOTE PARIS FR",
+  "BIG MAMMA PARIS FR",
+  "PIZZERIA POPOLARE PARIS FR",
+  "CAFÉ CHARLOT PARIS FR",
+  "CIPRIANI MONACO",
+  "ZUMA IBIZA ES",
+  "NUSR-ET DUBAI AE",
+  "HOTEL COSTES BAR PARIS FR",
+  "LA COUPOLE PARIS FR",
+];
+
+const GROCERIES = [
+  "CARREFOUR CITY BORDEAUX FR",
+  "AUCHAN PROXY FR",
+  "MONOPRIX PARIS FR",
+  "FRANPRIX PARIS FR",
+  "INTERMARCHE CONTACT FR",
+  "LIDL FR",
+  "LECLERC FR",
+];
+
+const CRYPTO = [
+  "REVOLUT TOPUP",
+  "BINANCE.COM",
+  "COINBASE",
+  "KRAKEN",
+  "CRYPTO.COM",
+  "METAMASK",
+];
+
+const TRAVEL = [
+  "AIR FRANCE",
+  "EMIRATES",
+  "QATAR AIRWAYS",
+  "DELTA AIRLINES",
+  "BOOKING.COM",
+  "MARRIOTT HOTEL",
+  "SIXT RENT A CAR",
+];
+
+const LUXURY = [
+  "LOUIS VUITTON PARIS",
+  "DIOR PARIS",
+  "CHANEL PARIS",
+  "GUCCI MONACO",
+  "HERMES PARIS",
+  "ROLEX GENEVA",
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function rand(min: number, max: number) {
+  return Math.random() * (max - min) + min;
+}
+
+function randomDateIsoLast3Days() {
+  const now = new Date();
+  const offsetHours = Math.floor(Math.random() * 72);
+  now.setHours(now.getHours() - offsetHours);
+  return now.toISOString();
+}
 /* ------------------ page ------------------ */
 
 export default function CardPage() {
@@ -236,7 +302,47 @@ function addFakeTx() {
     status: txStatus,
     type: "Auth",
   });
+function generateAutoTransactions(count: number) {
+  let next = allCards;
 
+  for (let i = 0; i < count; i++) {
+    const r = Math.random();
+
+    let description = "";
+    let amount = 0;
+
+    if (r < 0.30) {
+      description = pick(GROCERIES);
+      amount = rand(50, 120);
+    } else if (r < 0.55) {
+      description = pick(RESTAURANTS);
+      amount = rand(70, 250);
+    } else if (r < 0.75) {
+      description = pick(TRAVEL);
+      amount = rand(300, 900);
+    } else if (r < 0.90) {
+      description = pick(LUXURY);
+      amount = rand(400, 1000);
+    } else {
+      description = pick(CRYPTO);
+      amount = rand(200, 800);
+    }
+
+    const status: "Succeed" | "Failed" =
+      Math.random() < 0.05 ? "Failed" : "Succeed";
+
+    next = addFakeTransactionToCard(next, card.id, {
+      description,
+      amount: Number(amount.toFixed(2)),
+      status,
+      type: "Auth",
+      dateIso: randomDateIsoLast3Days(),
+    });
+  }
+
+  setAllCards(next);
+  saveCards(next);
+}
   setAllCards(next);
   saveCards(next);
   setTxOpen(false);
@@ -788,6 +894,21 @@ const confirmTitle = successTitle;
       <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
         <div className="flex items-start justify-between">
           <div>
+            <div className="flex gap-3 mb-3">
+  <button
+    className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
+    onClick={() => generateAutoTransactions(5)}
+  >
+    Generate 5
+  </button>
+
+  <button
+    className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
+    onClick={() => generateAutoTransactions(20)}
+  >
+    Generate 20
+  </button>
+</div>
             <div className="text-lg font-semibold">Add transaction</div>
             <div className="text-xs text-white/55 mt-1">
               (outil interne) Ajoute une transaction factice sur cette carte uniquement.
