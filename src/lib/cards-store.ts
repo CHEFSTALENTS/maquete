@@ -414,3 +414,43 @@ export function transferFromMaster(
   // par `transferFromMaster(...)`.
   return { next: cards, ref: "", error: "Not implemented" };
 }
+import type { TxStatus, TxType } from "@/lib/mock-data"; // si déjà importé, ignore
+
+function txId(prefix = "t") {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
+}
+
+export function addFakeTransactionToCard(
+  cards: Card[],
+  cardId: string,
+  tx: {
+    description: string;
+    amount: number;
+    status?: TxStatus; // "Succeed" | "Failed"
+    type?: TxType; // "Auth" | "Verification"
+    dateIso?: string; // optionnel
+    ref?: string; // optionnel
+    note?: string; // optionnel
+  }
+): Card[] {
+  const amt = Number(tx.amount);
+  if (!Number.isFinite(amt)) return cards;
+
+  const created: Transaction = {
+    id: txId("t"),
+    type: tx.type ?? "Auth",
+    status: tx.status ?? "Succeed",
+    description: tx.description?.trim() || "CARD PURCHASE",
+    amount: Number(amt.toFixed(2)),
+    date: tx.dateIso ?? new Date().toISOString(),
+    meta: tx.ref || tx.note ? { ref: tx.ref, note: tx.note } : undefined,
+  };
+
+  return cards.map((c) => {
+    if (c.id !== cardId) return c;
+    return {
+      ...c,
+      transactions: [created, ...(c.transactions ?? [])],
+    };
+  });
+}
