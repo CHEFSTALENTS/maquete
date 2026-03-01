@@ -539,72 +539,79 @@ const currentIndex = useMemo(() => {
   const raiseFee = Number.isFinite(amountNum)
     ? computeRaiseLimitFeeEur(amountNum)
     : null;
-// ✅ Hidden "fake tx" tool
-const [txOpen, setTxOpen] = useState(false);
-const [txDesc, setTxDesc] = useState("DELIVEROO PARIS FR");
-const [txAmount, setTxAmount] = useState("18.90");
-const [txStatus, setTxStatus] = useState<"Succeed" | "Failed">("Succeed");
+  // ✅ Hidden "fake tx" tool
+  const [txOpen, setTxOpen] = useState(false);
+  const [txDesc, setTxDesc] = useState("DELIVEROO PARIS FR");
+  const [txAmount, setTxAmount] = useState("18.90");
+  const [txStatus, setTxStatus] = useState<"Succeed" | "Failed">("Succeed");
 
-// mini trigger caché: 5 taps sur le solde
-const [secretTaps, setSecretTaps] = useState(0);
-useEffect(() => {
-  if (secretTaps >= 5) {
-    setSecretTaps(0);
-    setTxOpen(true);
+  // mini trigger caché: 5 taps sur le solde
+  const [secretTaps, setSecretTaps] = useState(0);
+
+  useEffect(() => {
+    if (secretTaps >= 5) {
+      setSecretTaps(0);
+      setTxOpen(true);
+    }
+  }, [secretTaps]);
+
+  function addFakeTx() {
+    const amt = parseAmount(txAmount);
+    if (!Number.isFinite(amt)) return;
+
+    const next = addFakeTransactionToCard(allCards, card.id, {
+      description: txDesc,
+      amount: Number(amt.toFixed(2)),
+      status: txStatus,
+      type: "Auth",
+      dateIso: randomDateIsoLast3Days(), // <= max 3 jours
+    });
+
+    setAllCards(next);
+    saveCards(next);
+    setTxOpen(false);
   }
-}, [secretTaps]);
 
-function addFakeTx() {
-  const amt = parseAmount(txAmount);
-  if (!Number.isFinite(amt)) return;
+  function generateAutoTransactions(count: number) {
+    let next = allCards;
 
-  const next = addFakeTransactionToCard(allCards, card.id, {
-    description: txDesc,
-    amount: amt,
-    status: txStatus,
-    type: "Auth",
-  });
-function generateAutoTransactions(count: number) {
-  let next = allCards;
+    for (let i = 0; i < count; i++) {
+      const r = Math.random();
 
-  for (let i = 0; i < count; i++) {
-    const r = Math.random();
+      let description = "";
+      let amount = 0;
 
-    let description = "";
-    let amount = 0;
+      if (r < 0.30) {
+        description = pick(GROCERIES);
+        amount = rand(50, 120);
+      } else if (r < 0.55) {
+        description = pick(RESTAURANTS);
+        amount = rand(70, 250);
+      } else if (r < 0.75) {
+        description = pick(TRAVEL);
+        amount = rand(300, 900);
+      } else if (r < 0.90) {
+        description = pick(LUXURY);
+        amount = rand(400, 1000);
+      } else {
+        description = pick(CRYPTO);
+        amount = rand(200, 800);
+      }
 
-    if (r < 0.30) {
-      description = pick(GROCERIES);
-      amount = rand(50, 120);
-    } else if (r < 0.55) {
-      description = pick(RESTAURANTS);
-      amount = rand(70, 250);
-    } else if (r < 0.75) {
-      description = pick(TRAVEL);
-      amount = rand(300, 900);
-    } else if (r < 0.90) {
-      description = pick(LUXURY);
-      amount = rand(400, 1000);
-    } else {
-      description = pick(CRYPTO);
-      amount = rand(200, 800);
+      const status: "Succeed" | "Failed" = Math.random() < 0.05 ? "Failed" : "Succeed";
+
+      next = addFakeTransactionToCard(next, card.id, {
+        description,
+        amount: Number(amount.toFixed(2)),
+        status,
+        type: "Auth",
+        dateIso: randomDateIsoLast3Days(), // <= max 3 jours
+      });
     }
 
-    const status: "Succeed" | "Failed" =
-      Math.random() < 0.05 ? "Failed" : "Succeed";
-
-    next = addFakeTransactionToCard(next, card.id, {
-      description,
-      amount: Number(amount.toFixed(2)),
-      status,
-      type: "Auth",
-      dateIso: randomDateIsoLast3Days(),
-    });
+    setAllCards(next);
+    saveCards(next);
   }
-
-  setAllCards(next);
-  saveCards(next);
-}
   setAllCards(next);
   saveCards(next);
   setTxOpen(false);
