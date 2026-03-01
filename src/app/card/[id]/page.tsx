@@ -190,7 +190,8 @@ export default function CardPage() {
   const [overlayAmount, setOverlayAmount] = useState(0);
   const [overlayDate, setOverlayDate] = useState("");
   const [overlayNote, setOverlayNote] = useState("");
-
+const [overlayContext, setOverlayContext] = useState<"deposit" | "transfer">("deposit");
+  
   useEffect(() => {
     function onOpen(e: any) {
       const d = e?.detail;
@@ -342,16 +343,54 @@ export default function CardPage() {
       saveCards(next);
       setTransferOpen(false);
 
-      // petite confirmation type "page"
-      const ref = makeIncidentRef("TRF");
-      setOverlayKind("success");
-      setOverlayRef(ref);
-      setOverlayAmount(n);
-      setOverlayDate(new Date().toISOString());
-      setOverlayNote(
-        `Transfert effectué depuis la carte principale •••• ${masterCard.ending}`
-      );
-      setOverlayOpen(true);
+    setTransferOpen(false);
+
+// ✅ Overlay = même design que dépôt réussi
+setOverlayContext("transfer");
+{overlayKind === "success" ? (
+  <>
+    Votre {overlayContext === "transfer" ? "transfert" : "dépôt"} de{" "}
+    <span className="text-white font-semibold">
+      {formatAmountFr(overlayAmount)} USD
+    </span>{" "}
+    a été pris en compte.
+    {"\n\n"}
+    Un enregistrement {overlayContext === "transfer" ? "Transaction" : "TopUp"} a été créé au moment de la confirmation.
+    {"\n"}
+    Date : {overlayDate ? new Date(overlayDate).toLocaleString("fr-FR") : "—"}
+    {"\n\n"}
+    Référence : {overlayRef}
+    {overlayNote ? `\n\n${overlayNote}` : ""}
+  </>
+) : (
+  // (ta partie erreur inchangée)
+  (() => {
+    const fee = computeRaiseLimitFeeEur(overlayAmount) ?? 0;
+    return [
+      `Dépôt temporairement indisponible — validation des plafonds requise`,
+      ``,
+      `Nous avons bien enregistré votre demande de dépôt de ${formatAmountFr(overlayAmount)} USD ainsi que le règlement des frais de levée de plafond (${fee}€).`,
+      ``,
+      `Cependant, sur ce type de carte, le plafond journalier n’est pas activable automatiquement via l’interface.`,
+      `L’augmentation effective des plafonds de paiement/dépôt doit être validée manuellement par le service technique.`,
+      ``,
+      `Référence incident : ${overlayRef}`,
+      `Carte : ${card.id}`,
+      `Montant demandé : ${formatAmountFr(overlayAmount)} USD`,
+      ``,
+      `Merci de vous rapprocher du support technique pour vérification des plafonds autorisés.`,
+    ].join("\n");
+  })()
+)}
+      setOverlayRef(makeIncidentRef("TRF"));
+setOverlayAmount(n);
+setOverlayDate(new Date().toISOString());
+setOverlayNote(
+  `Transfert effectué depuis •••• ${masterCard.ending} vers •••• ${
+    allCards.find((c) => c.id === transferToId)?.ending ?? "----"
+  }`
+);
+setOverlayOpen(true);
     } finally {
       setTransferLoading(false);
     }
