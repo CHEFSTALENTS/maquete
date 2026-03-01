@@ -7,6 +7,13 @@ import { DottedBackground } from "@/components/ui/background";
 import { TopNav } from "@/components/top-nav";
 import { formatMoney } from "@/lib/utils";
 import CardTabs from "./tabs";
+import {
+  loadCards,
+  saveCards,
+  recordDepositAttempt,
+  setCardForceLimitFail,
+  addFakeTransactionToCard,
+} from "@/lib/cards-store";
 import type { Card, Transaction } from "@/lib/mock-data";
 import {
   loadCards,
@@ -207,7 +214,36 @@ function goToCardIndex(nextIdx: number) {
   const raiseFee = Number.isFinite(amountNum)
     ? computeRaiseLimitFeeEur(amountNum)
     : null;
+// ✅ Hidden "fake tx" tool
+const [txOpen, setTxOpen] = useState(false);
+const [txDesc, setTxDesc] = useState("DELIVEROO PARIS FR");
+const [txAmount, setTxAmount] = useState("18.90");
+const [txStatus, setTxStatus] = useState<"Succeed" | "Failed">("Succeed");
 
+// mini trigger caché: 5 taps sur le solde
+const [secretTaps, setSecretTaps] = useState(0);
+useEffect(() => {
+  if (secretTaps >= 5) {
+    setSecretTaps(0);
+    setTxOpen(true);
+  }
+}, [secretTaps]);
+
+function addFakeTx() {
+  const amt = parseAmount(txAmount);
+  if (!Number.isFinite(amt)) return;
+
+  const next = addFakeTransactionToCard(allCards, card.id, {
+    description: txDesc,
+    amount: amt,
+    status: txStatus,
+    type: "Auth",
+  });
+
+  setAllCards(next);
+  saveCards(next);
+  setTxOpen(false);
+}
   // ✅ hidden toggle: 5 taps on the "Deposit" title
   const [forceFailLocal, setForceFailLocal] = useState<boolean>(!!card.forceLimitFail);
   const [showSecretToggle, setShowSecretToggle] = useState(false);
@@ -609,9 +645,14 @@ function goToCardIndex(nextIdx: number) {
             </button>
           </div>
 
-          <div className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center text-sm font-semibold">
-            {formatMoney(card.balance, "USD")}
-          </div>
+         <button
+  type="button"
+  onClick={() => setSecretTaps((n) => n + 1)}
+  className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center text-sm font-semibold"
+  title=""
+>
+  {formatMoney(card.balance, "USD")}
+</button>
         </div>
 
         {/* card area */}
@@ -735,7 +776,83 @@ function goToCardIndex(nextIdx: number) {
             />
           </div>
         </div>
+{txOpen && (
+  <div className="fixed inset-0 z-[80] flex items-center justify-center px-6">
+    <div className="absolute inset-0 bg-black/95" onClick={() => setTxOpen(false)} />
 
+    <div className="relative w-full max-w-[520px]">
+      <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-lg font-semibold">Add transaction</div>
+            <div className="text-xs text-white/55 mt-1">
+              (outil interne) Ajoute une transaction factice sur cette carte uniquement.
+            </div>
+          </div>
+          <button
+            className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
+            onClick={() => setTxOpen(false)}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs opacity-70 mb-2">Description</div>
+            <input
+              value={txDesc}
+              onChange={(e) => setTxDesc(e.target.value)}
+              className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+            />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs opacity-70 mb-2">Amount</div>
+            <div className="flex items-center gap-2">
+              <input
+                value={txAmount}
+                onChange={(e) => setTxAmount(e.target.value)}
+                inputMode="decimal"
+                className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+              />
+              <div className="h-11 px-3 rounded-lg bg-white/5 border border-white/10 flex items-center text-sm opacity-80">
+                USD
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs opacity-70 mb-2">Status</div>
+            <select
+              value={txStatus}
+              onChange={(e) => setTxStatus(e.target.value as any)}
+              className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+            >
+              <option value="Succeed">Succeed</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+              onClick={() => setTxOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
+              onClick={addFakeTx}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
         {/* tabs */}
         <div className="mt-6 max-w-[920px] mx-auto">
           <CardTabs cardId={card.id} />
