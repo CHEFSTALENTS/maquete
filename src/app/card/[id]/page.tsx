@@ -475,25 +475,82 @@ const currentIndex = useMemo(() => {
       setTxOpen(true);
     }
   }, [secretTaps]);
+  // --- helpers local: tri + impact dépense sur card.depositUsed + balance ---
+  function txDateMs(t: any) {
+    const iso = t?.dateIso ?? t?.date;
+    const ms = iso ? new Date(iso).getTime() : 0;
+    return Number.isFinite(ms) ? ms : 0;
+  }
 
-  function addFakeTx() {
+  function sortTxDesc(list: any[]) {
+    return [...(list ?? [])].sort((a, b) => txDateMs(b) - txDateMs(a));
+  }
+
+  function applySpendEffects(cards: Card[], cardId: string) {
+    // trie transactions desc + recalc depositUsed (sur la fenêtre 30j ou total récent)
+    // ici on fait SIMPLE: on additionne les tx succeed "Auth" (et on garde max 30 jours si tu veux)
+    const now = Date.now();
+    const windowMs = 30 * 24 * 60 * 60 * 1000; // 30 jours
+
+    return cards.map((c) => {
+      if (c.id !== cardId) return c;
+
+      const txs = sortTxDesc((c as any).transactions ?? []);
+
+      // total dépensé sur 30 jours (succeed uniquement)
+      const spent30d = txs.reduce((acc, t: any) => {
+        const ms = txDateMs(t);
+        if (!ms || now - ms > windowMs) return acc;
+
+        const ok = String(t.status).toLowerCase() === "succeed";
+        // on considère toutes ces tx comme "dépenses" (Auth)
+        if (!ok) return acc;
+
+        const amt = Number(t.amount ?? 0);
+        return acc + (Number.isFinite(amt) ? amt : 0);
+      }, 0);
+
+      return {
+        ...c,
+        transactions: txs as any,
+        // ✅ ton UI lit depositUsed => on y met le "spent"
+        depositUsed: Number(spent30d.toFixed(2)),
+      };
+    });
+  }
+    function addFakeTx() {
     const amt = parseAmount(txAmount);
     if (!Number.isFinite(amt)) return;
 
-    const next = addFakeTransactionToCard(allCards, card.id, {
+    const dateIso = randomDateIsoLast3Days();
+    const succeed = txStatus === "Succeed";
+
+    // 1) on ajoute la tx via ton store helper
+    let next = addFakeTransactionToCard(allCards, card.id, {
       description: txDesc,
       amount: Number(amt.toFixed(2)),
       status: txStatus,
       type: "Auth",
-      dateIso: randomDateIsoLast3Days(), // <= max 3 jours
+      dateIso, // <= cohérent 3-4 jours max
     });
+
+    // 2) (optionnel mais réaliste) si succeed => solde baisse
+    if (succeed) {
+      next = next.map((c) =>
+        c.id === card.id
+          ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) }
+          : c
+      );
+    }
+
+    // 3) ✅ trie + recalcul depositUsed (affiche dans "Your monthly deposit")
+    next = applySpendEffects(next, card.id);
 
     setAllCards(next);
     saveCards(next);
     setTxOpen(false);
   }
-
-    function generateAutoTransactions(count: number) {
+  function generateAutoTransactions(count: number) {
     let next = allCards;
 
     for (let i = 0; i < count; i++) {
@@ -502,34 +559,69 @@ const currentIndex = useMemo(() => {
       let description = "";
       let amount = 0;
 
-      if (r < 0.30) {
+      // majorité "vie réelle" + parfois plaisir, et rare luxe/voyage/crypto
+      if (r < 0.28) {
         description = pick(GROCERIES);
-        amount = rand(50, 120);
-      } else if (r < 0.55) {
+        amount = rand(8, 95);
+      } else if (r < 0.40) {
+        description = pick(BAKERIES_CAFES);
+        amount = rand(4, 28);
+      } else if (r < 0.58) {
         description = pick(RESTAURANTS);
-        amount = rand(70, 250);
-      } else if (r < 0.75) {
+        amount = rand(12, 140);
+      } else if (r < 0.70) {
+        description = pick(TRANSPORTS);
+        amount = rand(2.2, 180);
+      } else if (r < 0.80) {
+        description = pick(FUEL_PARKING);
+        amount = rand(25, 140);
+      } else if (r < 0.88) {
+        description = pick(ECOM_DELIVERY);
+        amount = rand(12, 220);
+      } else if (r < 0.93) {
+        description = pick(HEALTH);
+        amount = rand(9, 160);
+      } else if (r < 0.965) {
+        description = pick(SHOPPING);
+        amount = rand(18, 260);
+      } else if (r < 0.985) {
         description = pick(TRAVEL);
-        amount = rand(300, 900);
-      } else if (r < 0.90) {
+        amount = rand(450, 980);
+      } else if (r < 0.995) {
         description = pick(LUXURY);
-        amount = rand(400, 1000);
+        amount = rand(180, 950);
       } else {
         description = pick(CRYPTO);
-        amount = rand(200, 800);
+        amount = rand(80, 800);
       }
 
       const status: "Succeed" | "Failed" =
-        Math.random() < 0.05 ? "Failed" : "Succeed";
+        Math.random() < 0.06 ? "Failed" : "Succeed";
 
+      const amt = Number(amount.toFixed(2));
+      const dateIso = randomDateIsoLast3Days();
+
+      // 1) ajoute tx
       next = addFakeTransactionToCard(next, card.id, {
         description,
-        amount: Number(amount.toFixed(2)),
+        amount: amt,
         status,
         type: "Auth",
-        dateIso: randomDateIsoLast3Days(),
+        dateIso,
       });
+
+      // 2) si succeed => solde baisse
+      if (status === "Succeed") {
+        next = next.map((c) =>
+          c.id === card.id
+            ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) }
+            : c
+        );
+      }
     }
+
+    // 3) ✅ trie + recalcul depositUsed
+    next = applySpendEffects(next, card.id);
 
     setAllCards(next);
     saveCards(next);
