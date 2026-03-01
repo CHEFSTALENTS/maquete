@@ -611,6 +611,10 @@ const successMessage =
   overlayContext === "transfer"
     ? "Your transfer has been processed successfully."
     : "Your card has been recharged successfully.";
+
+// ✅ manquait : variable utilisée dans le JSX
+const confirmTitle = successTitle;
+  
   return (
     <DottedBackground>
       <TopNav />
