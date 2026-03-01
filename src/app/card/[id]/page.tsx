@@ -606,10 +606,13 @@ function addFakeTx() {
 
   /* ------------------ UI ------------------ */
 
-  const confirmTitle =
-    confirmOverlay.context === "transfer"
-      ? "Your transfer has been processed successfully."
-      : "Your card has been recharged successfully.";
+  const successTitle =
+  overlayContext === "transfer" ? "Transfer received." : "Payment received.";
+
+const successMessage =
+  overlayContext === "transfer"
+    ? "Your transfer has been processed successfully."
+    : "Your card has been recharged successfully.";
 
   return (
     <DottedBackground>
