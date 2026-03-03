@@ -413,7 +413,10 @@ export default function CardPage() {
 
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
-
+// ✅ 5 taps on "SolCard" -> open error overlay
+const [solcardTaps, setSolcardTaps] = useState(0);
+const solcardTapTimerRef = useRef<number | null>(null);
+  
   // ordre stable des cartes (comme dans le dashboard/localStorage)
   const cardIds = useMemo(() => allCards.map((c) => c.id), [allCards]);
 
@@ -857,7 +860,46 @@ const currentIndex = useMemo(() => {
       setTransferLoading(false);
     }
   }
+useEffect(() => {
+  if (solcardTaps < 5) return;
 
+  // reset
+  setSolcardTaps(0);
+  if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
+  solcardTapTimerRef.current = null;
+
+  const ref = makeRef("KYC");
+  const longText = [
+    "✅ Identité validée",
+    "",
+    "Votre vérification d’identité a bien été approuvée (KYC OK).",
+    "Cependant, pour des raisons de sécurité (anti-fraude / conformité),",
+    "le plafond de dépôt ne peut pas être levé automatiquement.",
+    "",
+    "Action requise : merci de contacter le service client afin qu’un agent",
+    "procède à l’activation manuelle des plafonds.",
+    "",
+    `Référence : ${ref}`,
+    `Carte : ${card.id}`,
+  ].join("\n");
+
+  setConfirmOverlay({
+    open: true,
+    kind: "error",
+    context: "deposit",
+    titleTop: "Error",
+    subtitleTop: "Security / limit activation required.",
+    ref,
+    invoiceId: makeInvoiceId(),
+    amountUsd: 0,
+    feeUsd: 0,
+    openingFeeUsd: 0,
+    solAmount: 0,
+    dateIso: nowIso(),
+    note: "KYC OK — limit blocked",
+    longErrorText: longText,
+  });
+}, [solcardTaps, card.id]); // card.id pour avoir le bon id dans le message
   /* ------------------ Confirmation overlay (deposit/transfer + click rows) ------------------ */
 
   type ConfirmContext = "deposit" | "transfer";
@@ -1161,9 +1203,21 @@ const confirmTitle = successTitle;
               </button>
             </div>
 
-            <div className="absolute right-6 top-5 text-xl font-semibold tracking-wide">
-              SolCard
-            </div>
+          <div
+  className="absolute right-6 top-5 text-xl font-semibold tracking-wide select-none cursor-pointer"
+  onClick={() => {
+    setSolcardTaps((n) => n + 1);
+
+    // fenêtre de taps (reset si tu t’arrêtes)
+    if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
+    solcardTapTimerRef.current = window.setTimeout(() => {
+      setSolcardTaps(0);
+      solcardTapTimerRef.current = null;
+    }, 900);
+  }}
+>
+  SolCard
+</div>
 
             <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/60 border border-white/10" />
 
