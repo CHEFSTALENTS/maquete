@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Shell } from "@/components/ui/card-shell";
 import { formatDateTime, formatMoney } from "@/lib/utils";
-import type { Transaction } from "@/lib/mock-data";
+import type { Transaction } from "@/lib/types";
 
 export function TransactionsTable({
   rows,
