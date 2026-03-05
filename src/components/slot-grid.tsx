@@ -22,7 +22,6 @@ function normalizeSlot(v: any): string {
   if (!v) return "";
   const s = String(v).trim();
 
-  // accepte: "Slot 2", "Slot2", "slot2", "2"
   if (/^\d+$/.test(s)) return `Slot${s}`;
   if (/^slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
   if (/^slot\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
@@ -30,23 +29,30 @@ function normalizeSlot(v: any): string {
   return s;
 }
 
+function MastercardMark() {
+  return (
+    <div className="relative h-8 w-14">
+      <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-red-500/90" />
+      <div className="absolute left-4 top-0 h-8 w-8 rounded-full bg-yellow-400/90 mix-blend-screen" />
+    </div>
+  );
+}
+
 export function SlotGrid({ className }: { className?: string }) {
   const cards = useMemo(() => {
     const list = loadCards();
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? (list as Card[]) : [];
   }, []);
 
   const slots = useMemo(() => {
     const labels = Array.from({ length: TOTAL_SLOTS }, (_, idx) => slotKey(idx + 1));
 
-    // 1) mapping par slot si card.slot existe
     const bySlot = new Map<string, Card>();
     for (const c of cards) {
       const s = normalizeSlot((c as any)?.slot);
       if (s && !bySlot.has(s)) bySlot.set(s, c);
     }
 
-    // 2) fallback: cartes sans slot -> on les place dans les slots libres
     const unassigned = cards.filter((c) => {
       const s = normalizeSlot((c as any)?.slot);
       return !s || !bySlot.has(s);
@@ -71,9 +77,8 @@ export function SlotGrid({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "grid gap-6",
-        // ✅ 3 colonnes en desktop => 3×3
-        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+        // ✅ 3×3 comme la capture
+        "grid grid-cols-3 gap-7",
         className
       )}
     >
@@ -88,39 +93,42 @@ export function SlotGrid({ className }: { className?: string }) {
               href={`/card/${card!.id}`}
               className={cn(
                 "group block",
-                "rounded-2xl border border-white/10 bg-white/0",
-                "hover:border-white/20 hover:bg-white/[0.03] transition"
+                "rounded-2xl border border-white/10 bg-[#0b0d12]/40",
+                "hover:border-white/20 hover:bg-[#0b0d12]/55 transition",
+                "shadow-[0_10px_40px_rgba(0,0,0,0.25)]"
               )}
             >
-              <div className="relative aspect-[1.86/1] rounded-2xl overflow-hidden">
+              <div className="relative aspect-[2.15/1] rounded-2xl overflow-hidden">
+                {/* légère texture / dégradé */}
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/50" />
 
-                <div className="relative h-full p-5">
+                <div className="relative h-full px-6 py-5">
+                  {/* top-left: Slot pill + SolCard */}
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[11px] font-semibold text-white/80">
+                      <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/80">
                         {slotLabel(i)}
                       </div>
 
-                      <div className="mt-2 text-[13px] font-semibold text-white/90 underline underline-offset-4">
+                      <div className="mt-3 text-[13px] font-semibold text-white/85 underline underline-offset-4">
                         SolCard
-                      </div>
-                    </div>
-
-                    <div className="mt-1 flex items-center">
-                      <div className="relative h-7 w-12">
-                        <div className="absolute left-0 top-0 h-7 w-7 rounded-full bg-red-500/90" />
-                        <div className="absolute left-4 top-0 h-7 w-7 rounded-full bg-yellow-400/90 mix-blend-screen" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-10">
-                    <div className="text-lg font-semibold text-white/90">
-                      Ending in {card!.ending ?? "----"}
+                  {/* mid: Ending */}
+                  <div className="mt-7 flex items-center justify-between">
+                    <div>
+                      <div className="text-xl font-semibold text-white/90">
+                        Ending in {card!.ending ?? "----"}
+                      </div>
+                      <div className="mt-2 text-[11px] tracking-wide font-semibold text-white/60 uppercase">
+                        {card!.holder ?? ""}
+                      </div>
                     </div>
-                    <div className="mt-2 text-[11px] tracking-wide font-semibold text-white/65">
-                      {card!.holder ?? ""}
+
+                    <div className="translate-y-1">
+                      <MastercardMark />
                     </div>
                   </div>
                 </div>
@@ -129,40 +137,43 @@ export function SlotGrid({ className }: { className?: string }) {
           );
         }
 
-        // ✅ slot vide cliquable (placeholder dashed + gros cercle)
+        // ✅ slot vide (1:1)
         return (
           <Link
             key={slot}
             href={slotHref(i)}
-            className={cn("group block rounded-2xl hover:opacity-95 transition")}
+            className="group block rounded-2xl"
             aria-label={`${slotLabel(i)} empty - create card`}
           >
             <div
               className={cn(
-                "relative aspect-[1.86/1] rounded-2xl overflow-hidden",
-                "border border-white/10 bg-white/[0.01]"
+                "relative aspect-[2.15/1] rounded-2xl overflow-hidden",
+                "border border-white/10 bg-[#0b0d12]/25",
+                "hover:bg-[#0b0d12]/35 hover:border-white/15 transition",
+                "shadow-[0_10px_40px_rgba(0,0,0,0.20)]"
               )}
             >
-              {/* dashed frame comme sur ta capture */}
-              <div className="absolute inset-3 rounded-2xl border border-dashed border-white/20" />
+              {/* cadre pointillé interne */}
+              <div className="absolute inset-4 rounded-2xl border border-dashed border-white/25" />
 
-              {/* guides en pointillés (très proche du rendu) */}
-              <div className="absolute left-1/2 top-3 bottom-3 w-px border-l border-dashed border-white/10" />
-              <div className="absolute top-1/2 left-3 right-3 h-px border-t border-dashed border-white/10" />
+              {/* guides pointillés (croix) */}
+              <div className="absolute left-1/2 top-4 bottom-4 w-px border-l border-dashed border-white/15" />
+              <div className="absolute top-1/2 left-4 right-4 h-px border-t border-dashed border-white/15" />
 
-              {/* gros cercle */}
-              <div className="absolute inset-0 flex items-center justify-center">
+              {/* 4 cercles “fantômes” très discrets (comme la capture) */}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div className="h-20 w-20 rounded-full bg-white/10 border border-white/10" />
               </div>
 
-              <div className="absolute left-5 top-5">
-                <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/40 group-hover:text-white/60 transition">
+              {/* label slot */}
+              <div className="absolute left-6 top-6">
+                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/70">
                   {slotLabel(i)}
                 </div>
-              </div>
 
-              <div className="absolute bottom-5 left-5 text-xs text-white/30 group-hover:text-white/55 transition">
-                Click to create
+                <div className="mt-3 text-[13px] font-semibold text-white/75 underline underline-offset-4 opacity-0 group-hover:opacity-100 transition">
+                  SolCard
+                </div>
               </div>
             </div>
           </Link>
