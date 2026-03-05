@@ -15,7 +15,6 @@ import {
   setCardForceLimitFail,
   addFakeTransactionToCard,
 } from "@/lib/cards-store";
-import type { Card, Transaction } from "@/lib/mock-data";
 
 
 /* ------------------ helpers ------------------ */
