@@ -75,13 +75,7 @@ export function SlotGrid({ className }: { className?: string }) {
   }, [cards]);
 
   return (
-    <div
-      className={cn(
-        // ✅ 3×3 comme la capture
-        "grid grid-cols-3 gap-7",
-        className
-      )}
-    >
+    <div className={cn("grid grid-cols-3 gap-7", className)}>
       {slots.map(({ slot, card }, idx) => {
         const i = idx + 1;
         const filled = !!card?.id;
@@ -99,24 +93,28 @@ export function SlotGrid({ className }: { className?: string }) {
               )}
             >
               <div className="relative aspect-[2.15/1] rounded-2xl overflow-hidden">
-                {/* légère texture / dégradé */}
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/50" />
 
                 <div className="relative h-full px-6 py-5">
-                  {/* top-left: Slot pill + SolCard */}
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/80">
                         {slotLabel(i)}
                       </div>
 
-                      <div className="mt-3 text-[13px] font-semibold text-white/85 underline underline-offset-4">
+                      {/* ✅ underline couleur correcte (pas violet) */}
+                      <div
+                        className={cn(
+                          "mt-3 text-[13px] font-semibold text-white/85",
+                          "underline underline-offset-4 decoration-white/50",
+                          "group-hover:decoration-white/70 transition"
+                        )}
+                      >
                         SolCard
                       </div>
                     </div>
                   </div>
 
-                  {/* mid: Ending */}
                   <div className="mt-7 flex items-center justify-between">
                     <div>
                       <div className="text-xl font-semibold text-white/90">
@@ -137,7 +135,7 @@ export function SlotGrid({ className }: { className?: string }) {
           );
         }
 
-        // ✅ slot vide (1:1)
+        // ✅ slot vide (sans croix)
         return (
           <Link
             key={slot}
@@ -156,22 +154,24 @@ export function SlotGrid({ className }: { className?: string }) {
               {/* cadre pointillé interne */}
               <div className="absolute inset-4 rounded-2xl border border-dashed border-white/25" />
 
-              {/* guides pointillés (croix) */}
-              <div className="absolute left-1/2 top-4 bottom-4 w-px border-l border-dashed border-white/15" />
-              <div className="absolute top-1/2 left-4 right-4 h-px border-t border-dashed border-white/15" />
-
-              {/* 4 cercles “fantômes” très discrets (comme la capture) */}
+              {/* ✅ cercle central uniquement (pas de croix) */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div className="h-20 w-20 rounded-full bg-white/10 border border-white/10" />
               </div>
 
-              {/* label slot */}
               <div className="absolute left-6 top-6">
                 <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/70">
                   {slotLabel(i)}
                 </div>
 
-                <div className="mt-3 text-[13px] font-semibold text-white/75 underline underline-offset-4 opacity-0 group-hover:opacity-100 transition">
+                <div
+                  className={cn(
+                    "mt-3 text-[13px] font-semibold text-white/75",
+                    "underline underline-offset-4 decoration-white/40",
+                    "opacity-0 group-hover:opacity-100",
+                    "group-hover:decoration-white/60 transition"
+                  )}
+                >
                   SolCard
                 </div>
               </div>
