@@ -7,96 +7,164 @@ import { cn } from "@/lib/utils";
 import type { Card } from "@/lib/types";
 import { loadCards } from "@/lib/cards-store";
 
-type SlotItem =
-  | { kind: "card"; slotIndex: number; card: Card }
-  | { kind: "empty"; slotIndex: number };
+type SlotItem = {
+  slotLabel: string; // "Slot1"
+  card?: Card;
+};
 
-const TOTAL_SLOTS = 6; // ✅ ajuste ici si tu veux 8, 10, etc.
+const TOTAL_SLOTS = 12;
 
-function sortCardsStable(cards: Card[]) {
-  // On garde l’ordre d’insertion si tu veux, sinon tri par id
-  // Ici : tri par id pour éviter les mouvements bizarres
-  return [...cards].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+function normalizeSlot(v: any): string {
+  if (!v) return "";
+  const s = String(v).trim();
+  // accepte "Slot2", "slot2", "2", 2
+  if (/^\d+$/.test(s)) return `Slot${s}`;
+  if (/^slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
+  if (/^slot\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
+  if (/^Slot\d+$/.test(s)) return s;
+  return s;
 }
 
-export function SlotGrid({ totalSlots = TOTAL_SLOTS }: { totalSlots?: number }) {
+export function SlotGrid({
+  className,
+  total = TOTAL_SLOTS,
+}: {
+  className?: string;
+  total?: number;
+}) {
   const pathname = usePathname();
-  const cards = useMemo(() => sortCardsStable(loadCards()), []);
+
+  const cards = useMemo(() => {
+    // load from localStorage (mock removed)
+    const list = loadCards();
+    return Array.isArray(list) ? list : [];
+  }, []);
 
   const slots: SlotItem[] = useMemo(() => {
-    const items: SlotItem[] = [];
+    const allSlotLabels = Array.from({ length: total }, (_, i) => `Slot${i + 1}`);
 
-    for (let i = 0; i < totalSlots; i++) {
-      const card = cards[i];
-      if (card) items.push({ kind: "card", slotIndex: i, card });
-      else items.push({ kind: "empty", slotIndex: i });
+    // 1) on indexe par slot si card.slot existe
+    const bySlot = new Map<string, Card>();
+    for (const c of cards) {
+      const slot = normalizeSlot((c as any)?.slot);
+      if (slot && !bySlot.has(slot)) bySlot.set(slot, c);
     }
 
-    return items;
-  }, [cards, totalSlots]);
+    // 2) on remplit : si pas de slot -> fallback par ordre (sans casser l’UI)
+    const unassigned = cards.filter((c) => {
+      const slot = normalizeSlot((c as any)?.slot);
+      return !slot || !bySlot.has(slot);
+    });
+
+    let cursor = 0;
+
+    return allSlotLabels.map((slotLabel) => {
+      const slotted = bySlot.get(slotLabel);
+      if (slotted) return { slotLabel, card: slotted };
+
+      const fallback = unassigned[cursor];
+      if (fallback) {
+        cursor += 1;
+        return { slotLabel, card: fallback };
+      }
+
+      return { slotLabel };
+    });
+  }, [cards, total]);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-      {slots.map((s) => {
-        // ✅ route “open slot”
-        // Adapte si chez toi c’est /slots/[id] ou /wallet/slot/[id]
-        const slotHref = `/slot/${s.slotIndex + 1}`;
+    <div
+      className={cn(
+        "grid gap-5",
+        // Responsive proche de ta capture (3 colonnes sur desktop)
+        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+        className
+      )}
+    >
+      {slots.map(({ slotLabel, card }) => {
+        const isFilled = !!card;
 
-        if (s.kind === "empty") {
-          return (
-            <Link
-              key={`empty-${s.slotIndex}`}
-              href={slotHref}
-              className={cn(
-                "group rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition",
-                "p-4 min-h-[130px] flex flex-col justify-between"
-              )}
-            >
-              <div className="text-sm font-semibold opacity-80">Empty slot</div>
-              <div className="text-xs opacity-60 leading-5">
-                Tap to create a new SolCard.
-              </div>
+        // style carte (même taille rempli / vide)
+        const CardShell = (
+          <div
+            className={cn(
+              "relative w-full",
+              "aspect-[1.86/1]", // ratio carte
+              "rounded-2xl",
+              "border border-white/10",
+              "bg-[#0b0d12]",
+              "shadow-[0_12px_40px_rgba(0,0,0,0.55)]",
+              "overflow-hidden"
+            )}
+          >
+            {/* subtil gradient comme ta capture */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-black/50" />
 
-              <div className="mt-4 flex items-center justify-between">
-                <div className="text-xs opacity-60">Slot #{s.slotIndex + 1}</div>
-                <div className="h-9 px-3 rounded-lg bg-white text-black text-xs font-semibold flex items-center">
-                  Create
+            {/* header Slot + SolCard */}
+            <div className="relative p-5">
+              <div className="inline-flex items-center gap-2">
+                <div className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-white/80">
+                  {slotLabel}
                 </div>
               </div>
+
+              <div className="mt-2">
+                <div className="text-[13px] font-semibold text-white/90 underline underline-offset-4">
+                  SolCard
+                </div>
+              </div>
+
+              {isFilled ? (
+                <>
+                  <div className="mt-10">
+                    <div className="text-lg font-semibold text-white/90">
+                      Ending in {card?.ending ?? "----"}
+                    </div>
+                    <div className="mt-2 text-[11px] tracking-wide text-white/65 font-semibold">
+                      {card?.holder ?? ""}
+                    </div>
+                  </div>
+
+                  {/* toggle jaune à droite */}
+                  <div className="absolute right-5 top-1/2 -translate-y-1/2">
+                    <div className="h-7 w-14 rounded-full bg-white/10 border border-white/10 flex items-center px-1">
+                      <div className="h-5 w-5 rounded-full bg-yellow-400 translate-x-7 shadow-[0_6px_20px_rgba(250,204,21,0.35)]" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                // slot vide : rien, mais même taille + même coque
+                <div className="mt-10 text-sm text-white/20 select-none">
+                  {/* volontairement vide */}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+        // Si une carte existe -> clickable vers /card/[id]
+        if (isFilled && card?.id) {
+          return (
+            <Link
+              key={slotLabel}
+              href={`/card/${card.id}`}
+              className={cn(
+                "block",
+                pathname?.startsWith(`/card/${card.id}`) ? "opacity-100" : "opacity-100",
+                "hover:opacity-95 transition"
+              )}
+              aria-label={`Open ${slotLabel}`}
+            >
+              {CardShell}
             </Link>
           );
         }
 
-        const cardHref = `/card/${s.card.id}`;
-        const active = pathname?.startsWith(cardHref);
-
+        // Slot vide -> non cliquable mais même taille
         return (
-          <Link
-            key={s.card.id}
-            href={cardHref}
-            className={cn(
-              "rounded-2xl border transition p-4 min-h-[130px] flex flex-col justify-between",
-              active ? "border-white/30 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10"
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{s.card.holder}</div>
-                <div className="text-xs opacity-60 mt-1">
-                  •••• {s.card.ending} — exp {s.card.expires}
-                </div>
-              </div>
-
-              <div className="text-xs opacity-60">Slot #{s.slotIndex + 1}</div>
-            </div>
-
-            <div className="mt-4">
-              <div className="text-xs opacity-60">Balance</div>
-              <div className="text-base font-semibold">
-                {Number(s.card.balance ?? 0).toFixed(2)} USD
-              </div>
-            </div>
-          </Link>
+          <div key={slotLabel} aria-label={`${slotLabel} empty`}>
+            {CardShell}
+          </div>
         );
       })}
     </div>
