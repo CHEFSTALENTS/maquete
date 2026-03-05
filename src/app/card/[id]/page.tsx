@@ -103,7 +103,74 @@ function transferFromMasterLocal(args: {
   if (masterId === toId) {
     return { next: cards, ref: "", error: "Sélectionnez une carte différente." };
   }
+function transferFromCardLocal(args: {
+  cards: Card[];
+  fromId: string;
+  toId: string;
+  amount: number;
+}): { next: Card[]; ref: string; error?: string } {
+  const { cards, fromId, toId } = args;
+  const amt = Number(args.amount);
 
+  if (!Number.isFinite(amt) || amt <= 0) {
+    return { next: cards, ref: "", error: "Montant invalide." };
+  }
+  if (fromId === toId) {
+    return { next: cards, ref: "", error: "Sélectionnez une carte différente." };
+  }
+
+  const from = cards.find((c) => c.id === fromId);
+  const dest = cards.find((c) => c.id === toId);
+  if (!from || !dest) {
+    return { next: cards, ref: "", error: "Carte introuvable." };
+  }
+  if ((from.balance ?? 0) < amt) {
+    return { next: cards, ref: "", error: "Solde insuffisant sur la carte source." };
+  }
+
+  const ref = makeRef("TRF");
+  const when = nowIso();
+
+  const fromTx: Transaction = {
+    id: txId("t"),
+    type: "Auth",
+    status: "Succeed",
+    description: `Transfer to •••• ${dest.ending}`,
+    amount: Number(amt.toFixed(2)),
+    date: when,
+    meta: { ref, note: `To ${dest.holder}` },
+  };
+
+  const destTx: Transaction = {
+    id: txId("t"),
+    type: "Auth",
+    status: "Succeed",
+    description: `Transfer from •••• ${from.ending}`,
+    amount: Number(amt.toFixed(2)),
+    date: when,
+    meta: { ref, note: `From ${from.holder}` },
+  };
+
+  const next = cards.map((c) => {
+    if (c.id === fromId) {
+      return {
+        ...c,
+        balance: Number(((c.balance ?? 0) - amt).toFixed(2)),
+        transactions: [fromTx, ...(c.transactions ?? [])],
+      };
+    }
+    if (c.id === toId) {
+      return {
+        ...c,
+        balance: Number(((c.balance ?? 0) + amt).toFixed(2)),
+        transactions: [destTx, ...(c.transactions ?? [])],
+      };
+    }
+    return c;
+  });
+
+  return { next, ref };
+}
   const master = cards.find((c) => c.id === masterId);
   const dest = cards.find((c) => c.id === toId);
   if (!master || !dest) {
@@ -769,9 +836,9 @@ const currentIndex = useMemo(() => {
   }, [allCards]);
 
   const transferTargets = useMemo(() => {
-    return allCards.filter((c) => c.id !== masterCard.id);
-  }, [allCards, masterCard.id]);
-
+  return allCards.filter((c) => c.id !== card.id);
+}, [allCards, card.id]);
+  
   type TransferSheet = null | "option" | "internal";
   const [transferSheet, setTransferSheet] = useState<TransferSheet>(null);
 
@@ -779,11 +846,17 @@ const currentIndex = useMemo(() => {
   const [transferAmount, setTransferAmount] = useState<string>("0.00");
   const [transferLoading, setTransferLoading] = useState(false);
   const [transferError, setTransferError] = useState<string>("");
-
+const [transferFeePaid, setTransferFeePaid] = useState(false);
+const [transferFeeLoading, setTransferFeeLoading] = useState(false);
+const [transferFeeError, setTransferFeeError] = useState("");
+  
   function openTransfer() {
     setTransferSheet("option");
     setTransferError("");
     setTransferLoading(false);
+    setTransferFeePaid(false);
+setTransferFeeLoading(false);
+setTransferFeeError("");
 
     // destination par défaut
     const preferred = card.id !== masterCard.id ? card.id : transferTargets[0]?.id ?? "";
@@ -793,9 +866,13 @@ const currentIndex = useMemo(() => {
 
   function closeTransfer() {
     setTransferSheet(null);
+    setTransferFeePaid(false);
+setTransferFeeLoading(false);
+setTransferFeeError("");
   }
 
   function goTransferInternal() {
+    setTransferFeeError("");
     setTransferSheet("internal");
     setTransferError("");
     // si vide, on garde un fallback
@@ -804,8 +881,58 @@ const currentIndex = useMemo(() => {
       setTransferToId(preferred);
     }
   }
+function getTransferFee(amount: number) {
+  // 5% du montant, arrondi centimes
+  return Number((amount * 0.05).toFixed(2));
+}
 
+async function payTransferFee() {
+  const n = parseAmount(transferAmount);
+  if (!Number.isFinite(n) || n <= 0) {
+    setTransferFeeError("Entrez un montant valide pour calculer les frais.");
+    return;
+  }
+
+  setTransferFeeError("");
+  setTransferFeeLoading(true);
+
+  try {
+    // petit délai réaliste
+    await new Promise((r) => setTimeout(r, 520));
+
+    const fee = getTransferFee(n);
+
+    // ✅ check solde: il faut pouvoir payer fee + transférer le montant
+    const total = Number((n + fee).toFixed(2));
+    if ((card.balance ?? 0) < total) {
+      setTransferFeePaid(false);
+      setTransferFeeError(
+        `Solde insuffisant. Total requis: ${formatMoney(total, "USD")} (montant + 5%).`
+      );
+      return;
+    }
+
+    // (optionnel) petit aléa réseau si tu veux
+    const fail = Math.random() < 0.08;
+    if (fail) {
+      setTransferFeePaid(false);
+      setTransferFeeError("Erreur réseau lors du paiement des frais. Réessayez.");
+      return;
+    }
+
+    setTransferFeePaid(true);
+  } finally {
+    setTransferFeeLoading(false);
+  }
+}
   async function confirmTransfer() {
+    const fee = getTransferFee(n);
+const total = Number((n + fee).toFixed(2));
+
+if (!transferFeePaid) {
+  setTransferError("Veuillez payer les frais (5%) avant de valider le transfert.");
+  return;
+}
     const n = parseAmount(transferAmount);
     if (!Number.isFinite(n) || n <= 0) {
       setTransferError("Entrez un montant valide.");
@@ -821,13 +948,67 @@ const currentIndex = useMemo(() => {
     try {
       await new Promise((r) => setTimeout(r, 450));
 
-      const { next, ref, error } = transferFromMasterLocal({
-        cards: allCards,
-        masterId: masterCard.id,
-        toId: transferToId,
-        amount: n,
-      });
+      const { next, ref, error } = transferFromCardLocal({
+  cards: allCards,
+  fromId: card.id, // ✅ carte courante
+  toId: transferToId,
+  amount: n,
+});
+const { next: afterTransfer, ref, error } = transferFromCardLocal({
+  cards: allCards,
+  fromId: card.id,
+  toId: transferToId,
+  amount: n,
+});
+      if (!error) {
+  const when = nowIso();
+  const feeTx: Transaction = {
+    id: txId("t"),
+    type: "Auth",
+    status: "Succeed",
+    description: "Transfer fee (5%)",
+    amount: Number(fee.toFixed(2)),
+    date: when,
+    meta: { ref, note: "Fee for internal transfer" },
+  };
 
+  const afterFee = afterTransfer.map((c) => {
+    if (c.id !== card.id) return c;
+    return {
+      ...c,
+      balance: Number(((c.balance ?? 0) - fee).toFixed(2)),
+      transactions: [feeTx, ...(c.transactions ?? [])],
+    };
+  });
+
+  setAllCards(afterFee);
+  saveCards(afterFee);
+
+  closeTransfer();
+
+  setConfirmOverlay({
+    open: true,
+    kind: "success",
+    context: "transfer",
+    titleTop: "Success",
+    subtitleTop: "Payment received.",
+    ref,
+    invoiceId: makeInvoiceId(),
+    amountUsd: n,
+    feeUsd: fee, // ✅ vrai 5%
+    openingFeeUsd: 0,
+    solAmount: usdToSol(n),
+    dateIso: nowIso(),
+    note: `Transfer •••• ${card.ending} → •••• ${
+      allCards.find((c) => c.id === transferToId)?.ending ?? "----"
+    }`,
+  });
+
+  // reset
+  setTransferFeePaid(false);
+  setTransferFeeError("");
+  setTransferError("");
+}
       if (error) {
         setTransferError(error);
         return;
@@ -852,9 +1033,9 @@ const currentIndex = useMemo(() => {
         openingFeeUsd: 0,
         solAmount: usdToSol(n),
         dateIso: nowIso(),
-        note: `Transfer •••• ${masterCard.ending} → •••• ${
-          allCards.find((c) => c.id === transferToId)?.ending ?? "----"
-        }`,
+        note: `Transfer •••• ${card.ending} → •••• ${
+  allCards.find((c) => c.id === transferToId)?.ending ?? "----"
+}`,
       });
     } finally {
       setTransferLoading(false);
@@ -1468,7 +1649,37 @@ const confirmTitle = successTitle;
                 </button>
               </div>
             </div>
+{/* Fee 5% */}
+<div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
+  <div className="flex items-center justify-between text-sm">
+    <div className="opacity-80">Transfer fee (5%)</div>
+    <div className="font-semibold">
+      {(() => {
+        const n = parseAmount(transferAmount);
+        const fee = Number.isFinite(n) && n > 0 ? getTransferFee(n) : 0;
+        return formatMoney(fee, "USD");
+      })()}
+    </div>
+  </div>
 
+  {transferFeeError ? (
+    <div className="mt-2 text-sm text-rose-200/90">{transferFeeError}</div>
+  ) : null}
+
+  <div className="mt-3 flex items-center justify-end gap-3">
+    {!transferFeePaid ? (
+      <button
+        onClick={payTransferFee}
+        className="h-11 px-4 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 hover:opacity-95 transition"
+        disabled={transferFeeLoading || !transferToId}
+      >
+        {transferFeeLoading ? "Processing..." : "Pay 5% fee"}
+      </button>
+    ) : (
+      <div className="text-sm opacity-80">Fee paid ✅</div>
+    )}
+  </div>
+</div>
             {/* Select card */}
             <div className="mt-4">
               <div className="text-sm font-semibold mb-2"> </div>
