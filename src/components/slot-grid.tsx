@@ -6,17 +6,15 @@ import { cn } from "@/lib/utils";
 import { loadCards } from "@/lib/cards-store";
 import type { Card } from "@/lib/types";
 
-const TOTAL_SLOTS = 12;
+const TOTAL_SLOTS = 9;
 
 function slotLabel(i: number) {
-  return `Slot ${i}`; // "Slot 1"
+  return `Slot ${i}`;
 }
 function slotKey(i: number) {
-  return `Slot${i}`; // "Slot1" (pour matching)
+  return `Slot${i}`;
 }
 function slotHref(i: number) {
-  // ✅ flow “slot” (création) — correspond à createDraftCardForSlot(slot)
-  // /slot/slot1, /slot/slot2, ...
   return `/slot/slot${i}`;
 }
 
@@ -28,7 +26,6 @@ function normalizeSlot(v: any): string {
   if (/^\d+$/.test(s)) return `Slot${s}`;
   if (/^slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
   if (/^slot\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
-  if (/^Slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
 
   return s;
 }
@@ -75,8 +72,8 @@ export function SlotGrid({ className }: { className?: string }) {
     <div
       className={cn(
         "grid gap-6",
-        // ✅ proche de ta capture (jusqu’à 4 colonnes)
-        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+        // ✅ 3 colonnes en desktop => 3×3
+        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
         className
       )}
     >
@@ -84,7 +81,6 @@ export function SlotGrid({ className }: { className?: string }) {
         const i = idx + 1;
         const filled = !!card?.id;
 
-        // --------- Filled card ---------
         if (filled) {
           return (
             <Link
@@ -97,7 +93,6 @@ export function SlotGrid({ className }: { className?: string }) {
               )}
             >
               <div className="relative aspect-[1.86/1] rounded-2xl overflow-hidden">
-                {/* fond léger */}
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/50" />
 
                 <div className="relative h-full p-5">
@@ -112,7 +107,6 @@ export function SlotGrid({ className }: { className?: string }) {
                       </div>
                     </div>
 
-                    {/* Mastercard circles */}
                     <div className="mt-1 flex items-center">
                       <div className="relative h-7 w-12">
                         <div className="absolute left-0 top-0 h-7 w-7 rounded-full bg-red-500/90" />
@@ -135,46 +129,38 @@ export function SlotGrid({ className }: { className?: string }) {
           );
         }
 
-        // --------- Empty slot (click to create) ---------
+        // ✅ slot vide cliquable (placeholder dashed + gros cercle)
         return (
           <Link
             key={slot}
             href={slotHref(i)}
-            className={cn(
-              "group block",
-              "rounded-2xl",
-              "hover:opacity-95 transition"
-            )}
+            className={cn("group block rounded-2xl hover:opacity-95 transition")}
             aria-label={`${slotLabel(i)} empty - create card`}
           >
             <div
               className={cn(
                 "relative aspect-[1.86/1] rounded-2xl overflow-hidden",
-                // dashed container comme ta capture
-                "border border-white/10",
-                "bg-white/[0.01]"
+                "border border-white/10 bg-white/[0.01]"
               )}
             >
-              {/* dashed inner frame */}
+              {/* dashed frame comme sur ta capture */}
               <div className="absolute inset-3 rounded-2xl border border-dashed border-white/20" />
 
-              {/* dashed cross guides (optionnel mais très proche de ta capture) */}
+              {/* guides en pointillés (très proche du rendu) */}
               <div className="absolute left-1/2 top-3 bottom-3 w-px border-l border-dashed border-white/10" />
               <div className="absolute top-1/2 left-3 right-3 h-px border-t border-dashed border-white/10" />
 
-              {/* big circle placeholder */}
+              {/* gros cercle */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="h-20 w-20 rounded-full bg-white/10 border border-white/10" />
               </div>
 
-              {/* slot label faint */}
               <div className="absolute left-5 top-5">
                 <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/40 group-hover:text-white/60 transition">
                   {slotLabel(i)}
                 </div>
               </div>
 
-              {/* small hint on hover */}
               <div className="absolute bottom-5 left-5 text-xs text-white/30 group-hover:text-white/55 transition">
                 Click to create
               </div>
