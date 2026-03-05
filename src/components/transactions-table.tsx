@@ -141,9 +141,12 @@ export function TransactionsTable({
                       <td className="px-4 py-3 text-right text-white/85">
                         {formatMoney(r.amount, currency)}
                       </td>
-                      <td className="px-4 py-3 text-right text-white/70">
-                        {formatDateTime(r.date)}
-                      </td>
+                     <td className="px-4 py-3 text-right text-white/70">
+  {(() => {
+    const iso = (r as any).dateIso ?? r.date;
+    return iso ? formatDateTime(iso) : "—";
+  })()}
+</td>
                     </tr>
                   );
                 })
