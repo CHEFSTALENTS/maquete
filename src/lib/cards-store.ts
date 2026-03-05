@@ -1,3 +1,5 @@
+import type { Card, Transaction } from "@/lib/types";
+
 
 const LS_KEY = "solcard_mock_cards_v1";
 const LS_USED_HOLDERS_KEY = "solcard_mock_used_holders_v1";
