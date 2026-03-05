@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TransactionsTable } from "@/components/transactions-table";
-import type { Card, Transaction } from "@/lib/mock-data";
+import type { Card, Transaction } from "@/lib/types";
 import { loadCards } from "@/lib/cards-store";
 
 export default function CardTabs({ cardId }: { cardId: string }) {
