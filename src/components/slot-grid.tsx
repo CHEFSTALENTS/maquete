@@ -38,6 +38,22 @@ function MastercardMark() {
   );
 }
 
+/**
+ * ✅ Target circle = cercle + mire À L’INTÉRIEUR (pas une croix dans le slot)
+ */
+function TargetCircle() {
+  return (
+    <div className="relative h-24 w-24 rounded-full bg-white/7 border border-white/12">
+      {/* mire verticale (dans le cercle seulement) */}
+      <div className="absolute left-1/2 top-3 bottom-3 w-px -translate-x-1/2 bg-white/10" />
+      {/* mire horizontale (dans le cercle seulement) */}
+      <div className="absolute top-1/2 left-3 right-3 h-px -translate-y-1/2 bg-white/10" />
+      {/* petit point central */}
+      <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/12" />
+    </div>
+  );
+}
+
 export function SlotGrid({ className }: { className?: string }) {
   const cards = useMemo(() => {
     const list = loadCards();
@@ -80,103 +96,61 @@ export function SlotGrid({ className }: { className?: string }) {
         const i = idx + 1;
         const filled = !!card?.id;
 
-        if (filled) {
-          return (
-            <Link
-              key={slot}
-              href={`/card/${card!.id}`}
-              className={cn(
-                "group block",
-                "rounded-2xl border border-white/10 bg-[#0b0d12]/40",
-                "hover:border-white/20 hover:bg-[#0b0d12]/55 transition",
-                "shadow-[0_10px_40px_rgba(0,0,0,0.25)]"
-              )}
-            >
-              <div className="relative aspect-[2.15/1] rounded-2xl overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/50" />
+        const Wrapper = filled ? Link : Link;
+        const href = filled ? `/card/${card!.id}` : slotHref(i);
 
-                <div className="relative h-full px-6 py-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/80">
-                        {slotLabel(i)}
-                      </div>
-
-                      {/* ✅ underline couleur correcte (pas violet) */}
-                      <div
-                        className={cn(
-                          "mt-3 text-[13px] font-semibold text-white/85",
-                          "underline underline-offset-4 decoration-white/50",
-                          "group-hover:decoration-white/70 transition"
-                        )}
-                      >
-                        SolCard
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-7 flex items-center justify-between">
-                    <div>
-                      <div className="text-xl font-semibold text-white/90">
-                        Ending in {card!.ending ?? "----"}
-                      </div>
-                      <div className="mt-2 text-[11px] tracking-wide font-semibold text-white/60 uppercase">
-                        {card!.holder ?? ""}
-                      </div>
-                    </div>
-
-                    <div className="translate-y-1">
-                      <MastercardMark />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          );
-        }
-
-        // ✅ slot vide (sans croix)
         return (
-          <Link
+          <Wrapper
             key={slot}
-            href={slotHref(i)}
-            className="group block rounded-2xl"
-            aria-label={`${slotLabel(i)} empty - create card`}
+            href={href}
+            className={cn(
+              "group block rounded-2xl",
+              // ✅ flat/wireframe like original
+              "border border-white/10 bg-white/[0.02]",
+              "hover:bg-white/[0.03] hover:border-white/15 transition",
+              "shadow-[0_10px_40px_rgba(0,0,0,0.22)]"
+            )}
           >
-            <div
-              className={cn(
-                "relative aspect-[2.15/1] rounded-2xl overflow-hidden",
-                "border border-white/10 bg-[#0b0d12]/25",
-                "hover:bg-[#0b0d12]/35 hover:border-white/15 transition",
-                "shadow-[0_10px_40px_rgba(0,0,0,0.20)]"
-              )}
-            >
-              {/* cadre pointillé interne */}
-              <div className="absolute inset-4 rounded-2xl border border-dashed border-white/25" />
+            <div className="relative aspect-[2.25/1] rounded-2xl overflow-hidden">
+              {/* ✅ inner dashed frame (plus visible) */}
+              <div className="absolute inset-5 rounded-2xl border border-dashed border-white/25" />
 
-              {/* ✅ cercle central uniquement (pas de croix) */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="h-20 w-20 rounded-full bg-white/10 border border-white/10" />
+              {/* ✅ target circle centered (original look) */}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-90">
+                <TargetCircle />
               </div>
 
+              {/* TOP LEFT LABELS */}
               <div className="absolute left-6 top-6">
-                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/70">
+                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/80">
                   {slotLabel(i)}
                 </div>
 
-                <div
-                  className={cn(
-                    "mt-3 text-[13px] font-semibold text-white/75",
-                    "underline underline-offset-4 decoration-white/40",
-                    "opacity-0 group-hover:opacity-100",
-                    "group-hover:decoration-white/60 transition"
-                  )}
-                >
+                {/* ✅ SolCard underline color like original (not purple) */}
+                <div className="mt-3 text-[13px] font-semibold text-white/80 underline underline-offset-4 decoration-white/45 group-hover:decoration-white/70 transition">
                   SolCard
                 </div>
               </div>
+
+              {/* FILLED CARD CONTENT (overlay like original) */}
+              {filled ? (
+                <div className="absolute left-6 right-6 bottom-6 flex items-end justify-between">
+                  <div>
+                    <div className="text-[22px] font-semibold text-white/90">
+                      Ending in {card!.ending ?? "----"}
+                    </div>
+                    <div className="mt-2 text-[11px] tracking-wide font-semibold text-white/60 uppercase">
+                      {card!.holder ?? ""}
+                    </div>
+                  </div>
+
+                  <div className="translate-y-1">
+                    <MastercardMark />
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </Link>
+          </Wrapper>
         );
       })}
     </div>
