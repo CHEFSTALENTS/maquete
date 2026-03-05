@@ -36,10 +36,13 @@ window.dispatchEvent(new Event("solcard:cards:changed"));
     return Array.isArray(card.transactions) ? card.transactions : [];
   }, [card]);
 
-  const topupRows: Transaction[] = useMemo(() => {
-    if (!card) return [];
-    return Array.isArray(card.topups) ? card.topups : [];
-  }, [card]);
+ const topupRows: Transaction[] = useMemo(() => {
+  if (!card) return [];
+
+  // ✅ plus besoin de card.topups (donc plus d'erreur TS)
+  const txs = Array.isArray(card.transactions) ? card.transactions : [];
+  return txs.filter((t) => t.type === "Topup");
+}, [card]);
 
   const rows = tab === "transactions" ? txRows : topupRows;
 
