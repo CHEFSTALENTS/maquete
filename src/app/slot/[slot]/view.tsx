@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TransactionsTable } from "@/components/transactions-table";
-import type { Card } from "@/lib/mock-data";
+import type { Card } from "@/lib/types";
 import {
   createDraftCardForSlot,
   loadCards,
