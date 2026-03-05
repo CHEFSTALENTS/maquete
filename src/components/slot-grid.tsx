@@ -2,169 +2,184 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { Card } from "@/lib/types";
 import { loadCards } from "@/lib/cards-store";
-
-type SlotItem = {
-  slotLabel: string; // "Slot1"
-  card?: Card;
-};
+import type { Card } from "@/lib/types";
 
 const TOTAL_SLOTS = 12;
+
+function slotLabel(i: number) {
+  return `Slot ${i}`; // "Slot 1"
+}
+function slotKey(i: number) {
+  return `Slot${i}`; // "Slot1" (pour matching)
+}
+function slotHref(i: number) {
+  // ✅ flow “slot” (création) — correspond à createDraftCardForSlot(slot)
+  // /slot/slot1, /slot/slot2, ...
+  return `/slot/slot${i}`;
+}
 
 function normalizeSlot(v: any): string {
   if (!v) return "";
   const s = String(v).trim();
-  // accepte "Slot2", "slot2", "2", 2
+
+  // accepte: "Slot 2", "Slot2", "slot2", "2"
   if (/^\d+$/.test(s)) return `Slot${s}`;
   if (/^slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
   if (/^slot\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
-  if (/^Slot\d+$/.test(s)) return s;
+  if (/^Slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
+
   return s;
 }
 
-export function SlotGrid({
-  className,
-  total = TOTAL_SLOTS,
-}: {
-  className?: string;
-  total?: number;
-}) {
-  const pathname = usePathname();
-
+export function SlotGrid({ className }: { className?: string }) {
   const cards = useMemo(() => {
-    // load from localStorage (mock removed)
     const list = loadCards();
     return Array.isArray(list) ? list : [];
   }, []);
 
-  const slots: SlotItem[] = useMemo(() => {
-    const allSlotLabels = Array.from({ length: total }, (_, i) => `Slot${i + 1}`);
+  const slots = useMemo(() => {
+    const labels = Array.from({ length: TOTAL_SLOTS }, (_, idx) => slotKey(idx + 1));
 
-    // 1) on indexe par slot si card.slot existe
+    // 1) mapping par slot si card.slot existe
     const bySlot = new Map<string, Card>();
     for (const c of cards) {
-      const slot = normalizeSlot((c as any)?.slot);
-      if (slot && !bySlot.has(slot)) bySlot.set(slot, c);
+      const s = normalizeSlot((c as any)?.slot);
+      if (s && !bySlot.has(s)) bySlot.set(s, c);
     }
 
-    // 2) on remplit : si pas de slot -> fallback par ordre (sans casser l’UI)
+    // 2) fallback: cartes sans slot -> on les place dans les slots libres
     const unassigned = cards.filter((c) => {
-      const slot = normalizeSlot((c as any)?.slot);
-      return !slot || !bySlot.has(slot);
+      const s = normalizeSlot((c as any)?.slot);
+      return !s || !bySlot.has(s);
     });
 
     let cursor = 0;
 
-    return allSlotLabels.map((slotLabel) => {
-      const slotted = bySlot.get(slotLabel);
-      if (slotted) return { slotLabel, card: slotted };
+    return labels.map((s) => {
+      const direct = bySlot.get(s);
+      if (direct) return { slot: s, card: direct };
 
-      const fallback = unassigned[cursor];
-      if (fallback) {
+      const fb = unassigned[cursor];
+      if (fb) {
         cursor += 1;
-        return { slotLabel, card: fallback };
+        return { slot: s, card: fb };
       }
 
-      return { slotLabel };
+      return { slot: s, card: undefined as Card | undefined };
     });
-  }, [cards, total]);
+  }, [cards]);
 
   return (
     <div
       className={cn(
-        "grid gap-5",
-        // Responsive proche de ta capture (3 colonnes sur desktop)
-        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+        "grid gap-6",
+        // ✅ proche de ta capture (jusqu’à 4 colonnes)
+        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
         className
       )}
     >
-      {slots.map(({ slotLabel, card }) => {
-        const isFilled = !!card;
+      {slots.map(({ slot, card }, idx) => {
+        const i = idx + 1;
+        const filled = !!card?.id;
 
-        // style carte (même taille rempli / vide)
-        const CardShell = (
-          <div
-            className={cn(
-              "relative w-full",
-              "aspect-[1.86/1]", // ratio carte
-              "rounded-2xl",
-              "border border-white/10",
-              "bg-[#0b0d12]",
-              "shadow-[0_12px_40px_rgba(0,0,0,0.55)]",
-              "overflow-hidden"
-            )}
-          >
-            {/* subtil gradient comme ta capture */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-black/50" />
-
-            {/* header Slot + SolCard */}
-            <div className="relative p-5">
-              <div className="inline-flex items-center gap-2">
-                <div className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-white/80">
-                  {slotLabel}
-                </div>
-              </div>
-
-              <div className="mt-2">
-                <div className="text-[13px] font-semibold text-white/90 underline underline-offset-4">
-                  SolCard
-                </div>
-              </div>
-
-              {isFilled ? (
-                <>
-                  <div className="mt-10">
-                    <div className="text-lg font-semibold text-white/90">
-                      Ending in {card?.ending ?? "----"}
-                    </div>
-                    <div className="mt-2 text-[11px] tracking-wide text-white/65 font-semibold">
-                      {card?.holder ?? ""}
-                    </div>
-                  </div>
-
-                  {/* toggle jaune à droite */}
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2">
-                    <div className="h-7 w-14 rounded-full bg-white/10 border border-white/10 flex items-center px-1">
-                      <div className="h-5 w-5 rounded-full bg-yellow-400 translate-x-7 shadow-[0_6px_20px_rgba(250,204,21,0.35)]" />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                // slot vide : rien, mais même taille + même coque
-                <div className="mt-10 text-sm text-white/20 select-none">
-                  {/* volontairement vide */}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-        // Si une carte existe -> clickable vers /card/[id]
-        if (isFilled && card?.id) {
+        // --------- Filled card ---------
+        if (filled) {
           return (
             <Link
-              key={slotLabel}
-              href={`/card/${card.id}`}
+              key={slot}
+              href={`/card/${card!.id}`}
               className={cn(
-                "block",
-                pathname?.startsWith(`/card/${card.id}`) ? "opacity-100" : "opacity-100",
-                "hover:opacity-95 transition"
+                "group block",
+                "rounded-2xl border border-white/10 bg-white/0",
+                "hover:border-white/20 hover:bg-white/[0.03] transition"
               )}
-              aria-label={`Open ${slotLabel}`}
             >
-              {CardShell}
+              <div className="relative aspect-[1.86/1] rounded-2xl overflow-hidden">
+                {/* fond léger */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/50" />
+
+                <div className="relative h-full p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[11px] font-semibold text-white/80">
+                        {slotLabel(i)}
+                      </div>
+
+                      <div className="mt-2 text-[13px] font-semibold text-white/90 underline underline-offset-4">
+                        SolCard
+                      </div>
+                    </div>
+
+                    {/* Mastercard circles */}
+                    <div className="mt-1 flex items-center">
+                      <div className="relative h-7 w-12">
+                        <div className="absolute left-0 top-0 h-7 w-7 rounded-full bg-red-500/90" />
+                        <div className="absolute left-4 top-0 h-7 w-7 rounded-full bg-yellow-400/90 mix-blend-screen" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-10">
+                    <div className="text-lg font-semibold text-white/90">
+                      Ending in {card!.ending ?? "----"}
+                    </div>
+                    <div className="mt-2 text-[11px] tracking-wide font-semibold text-white/65">
+                      {card!.holder ?? ""}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </Link>
           );
         }
 
-        // Slot vide -> non cliquable mais même taille
+        // --------- Empty slot (click to create) ---------
         return (
-          <div key={slotLabel} aria-label={`${slotLabel} empty`}>
-            {CardShell}
-          </div>
+          <Link
+            key={slot}
+            href={slotHref(i)}
+            className={cn(
+              "group block",
+              "rounded-2xl",
+              "hover:opacity-95 transition"
+            )}
+            aria-label={`${slotLabel(i)} empty - create card`}
+          >
+            <div
+              className={cn(
+                "relative aspect-[1.86/1] rounded-2xl overflow-hidden",
+                // dashed container comme ta capture
+                "border border-white/10",
+                "bg-white/[0.01]"
+              )}
+            >
+              {/* dashed inner frame */}
+              <div className="absolute inset-3 rounded-2xl border border-dashed border-white/20" />
+
+              {/* dashed cross guides (optionnel mais très proche de ta capture) */}
+              <div className="absolute left-1/2 top-3 bottom-3 w-px border-l border-dashed border-white/10" />
+              <div className="absolute top-1/2 left-3 right-3 h-px border-t border-dashed border-white/10" />
+
+              {/* big circle placeholder */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="h-20 w-20 rounded-full bg-white/10 border border-white/10" />
+              </div>
+
+              {/* slot label faint */}
+              <div className="absolute left-5 top-5">
+                <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/40 group-hover:text-white/60 transition">
+                  {slotLabel(i)}
+                </div>
+              </div>
+
+              {/* small hint on hover */}
+              <div className="absolute bottom-5 left-5 text-xs text-white/30 group-hover:text-white/55 transition">
+                Click to create
+              </div>
+            </div>
+          </Link>
         );
       })}
     </div>
