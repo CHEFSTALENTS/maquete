@@ -21,11 +21,9 @@ function slotHref(i: number) {
 function normalizeSlot(v: any): string {
   if (!v) return "";
   const s = String(v).trim();
-
   if (/^\d+$/.test(s)) return `Slot${s}`;
   if (/^slot\s*\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
   if (/^slot\d+$/i.test(s)) return `Slot${s.replace(/slot/i, "").trim()}`;
-
   return s;
 }
 
@@ -34,22 +32,6 @@ function MastercardMark() {
     <div className="relative h-8 w-14">
       <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-red-500/90" />
       <div className="absolute left-4 top-0 h-8 w-8 rounded-full bg-yellow-400/90 mix-blend-screen" />
-    </div>
-  );
-}
-
-/**
- * ✅ Target circle = cercle + mire À L’INTÉRIEUR (pas une croix dans le slot)
- */
-function TargetCircle() {
-  return (
-    <div className="relative h-24 w-24 rounded-full bg-white/7 border border-white/12">
-      {/* mire verticale (dans le cercle seulement) */}
-      <div className="absolute left-1/2 top-3 bottom-3 w-px -translate-x-1/2 bg-white/10" />
-      {/* mire horizontale (dans le cercle seulement) */}
-      <div className="absolute top-1/2 left-3 right-3 h-px -translate-y-1/2 bg-white/10" />
-      {/* petit point central */}
-      <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/12" />
     </div>
   );
 }
@@ -91,48 +73,49 @@ export function SlotGrid({ className }: { className?: string }) {
   }, [cards]);
 
   return (
-    <div className={cn("grid grid-cols-3 gap-7", className)}>
+    <div
+      className={cn(
+        // ✅ 3x3
+        "grid grid-cols-3 gap-8",
+        // ✅ largeur max proche de ton rendu, et centré
+        "mx-auto w-full max-w-[1200px]",
+        className
+      )}
+    >
       {slots.map(({ slot, card }, idx) => {
         const i = idx + 1;
         const filled = !!card?.id;
-
-        const Wrapper = filled ? Link : Link;
         const href = filled ? `/card/${card!.id}` : slotHref(i);
 
         return (
-          <Wrapper
+          <Link
             key={slot}
             href={href}
             className={cn(
               "group block rounded-2xl",
-              // ✅ flat/wireframe like original
+              // ✅ look clean / flat (pas de pointillé, pas de cercle)
               "border border-white/10 bg-white/[0.02]",
               "hover:bg-white/[0.03] hover:border-white/15 transition",
-              "shadow-[0_10px_40px_rgba(0,0,0,0.22)]"
+              "shadow-[0_14px_55px_rgba(0,0,0,0.35)]"
             )}
           >
-            <div className="relative aspect-[2.25/1] rounded-2xl overflow-hidden">
-              {/* ✅ inner dashed frame (plus visible) */}
-              <div className="absolute inset-5 rounded-2xl border border-dashed border-white/25" />
+            {/* ✅ Taille carte : on force une hauteur stable (beaucoup plus “card-like” que aspect-ratio) */}
+            <div className="relative h-[190px] rounded-2xl overflow-hidden">
+              {/* subtle vignette like the original */}
+              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-black/30" />
 
-              {/* ✅ target circle centered (original look) */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-90">
-                <TargetCircle />
-              </div>
-
-              {/* TOP LEFT LABELS */}
+              {/* labels (top-left) */}
               <div className="absolute left-6 top-6">
                 <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[12px] font-semibold text-white/80">
                   {slotLabel(i)}
                 </div>
 
-                {/* ✅ SolCard underline color like original (not purple) */}
                 <div className="mt-3 text-[13px] font-semibold text-white/80 underline underline-offset-4 decoration-white/45 group-hover:decoration-white/70 transition">
                   SolCard
                 </div>
               </div>
 
-              {/* FILLED CARD CONTENT (overlay like original) */}
+              {/* filled card content */}
               {filled ? (
                 <div className="absolute left-6 right-6 bottom-6 flex items-end justify-between">
                   <div>
@@ -148,9 +131,12 @@ export function SlotGrid({ className }: { className?: string }) {
                     <MastercardMark />
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                // ✅ slot vide = juste vide, mais cliquable (aucun icon)
+                <div className="absolute inset-0" />
+              )}
             </div>
-          </Wrapper>
+          </Link>
         );
       })}
     </div>
