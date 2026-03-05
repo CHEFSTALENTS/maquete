@@ -2,6 +2,7 @@
 
 
 import Link from "next/link";
+import type { Card, Transaction } from "@/lib/types";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { DottedBackground } from "@/components/ui/background";
