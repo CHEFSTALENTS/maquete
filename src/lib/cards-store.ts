@@ -1,7 +1,8 @@
-import type { Card, Transaction } from "@/lib/types";
+import type { Card, Transaction, TxStatus, TxType } from "@/lib/types";
+
 // ✅ seedCards fallback (mock-data supprimé)
 // On garde une liste vide pour ne rien "précharger" et juste éviter l'erreur TS.
-const seedCards: { holder?: string }[] = [];
+const seedCards: Card[] = [];
 
 const LS_KEY = "solcard_mock_cards_v1";
 const LS_USED_HOLDERS_KEY = "solcard_mock_used_holders_v1";
@@ -11,6 +12,21 @@ export type FeeEur = 150 | 250 | 400;
 
 // ✅ alias for older imports in slot/view.tsx
 export type ActivationFeeEur = FeeEur;
+
+/**
+ * ⚠️ Certains écrans de ta maquette utilisent des champs "extra"
+ * (name, isActive, activationFeeEur). Ils ne sont pas dans Card.
+ * On les garde optionnels en stockage sans casser les types publics.
+ */
+type StoredCard = Card & {
+  name?: string;
+  isActive?: boolean;
+  activationFeeEur?: FeeEur;
+};
+
+/* ---------------------------------------------
+   Utils
+---------------------------------------------- */
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -42,14 +58,11 @@ function makeExpiry() {
 type NamePool = {
   first: string[];
   last: string[];
-  // optional second-last name for cultures where common
   last2?: string[];
-  // weight used for distribution
   weight: number;
 };
 
 const NAME_POOLS: NamePool[] = [
-  // France (dominant)
   {
     weight: 22,
     first: [
@@ -63,66 +76,48 @@ const NAME_POOLS: NamePool[] = [
       "Masson","Dupont",
     ],
   },
-
-  // UK / Ireland
   {
     weight: 10,
     first: ["James","William","Harry","George","Oliver","Jack","Noah","Leo","Charlie","Henry","Amelia","Olivia","Emily","Sophia","Grace","Ella"],
     last: ["Smith","Johnson","Brown","Taylor","Wilson","Davies","Evans","Thomas","Roberts","Walker","Wright","Hall","Wood","Thompson"],
   },
-
-  // Espagne
   {
     weight: 10,
     first: ["Sofia","Lucia","Martina","Paula","Carmen","Mateo","Hugo","Leo","Daniel","Alejandro","Carlos","Diego","Santiago"],
     last: ["Garcia","Martinez","Rodriguez","Lopez","Gonzalez","Sanchez","Ramirez","Torres","Flores","Vargas"],
     last2: ["Diaz","Hernandez","Alvarez","Moreno","Navarro","Rojas"],
   },
-
-  // Italie
   {
     weight: 9,
     first: ["Giulia","Sofia","Chiara","Francesca","Martina","Lorenzo","Matteo","Leonardo","Andrea","Marco","Giuseppe","Federico"],
     last: ["Rossi","Russo","Ferrari","Esposito","Bianchi","Romano","Colombo","Ricci","Marino","Greco","Conti"],
   },
-
-  // Portugal
   {
     weight: 6,
     first: ["Joao","Tiago","Miguel","Rafael","Goncalo","Ines","Beatriz","Mariana","Carolina","Sofia"],
     last: ["Silva","Santos","Ferreira","Pereira","Costa","Oliveira","Ribeiro","Carvalho"],
     last2: ["Almeida","Sousa","Rodrigues","Martins"],
   },
-
-  // Allemagne / Autriche / Suisse alémanique
   {
     weight: 7,
     first: ["Lukas","Leon","Finn","Noah","Paul","Felix","Emilia","Mia","Hannah","Lea","Sophia","Lena"],
     last: ["Muller","Schmidt","Schneider","Fischer","Weber","Meyer","Wagner","Becker","Hoffmann","Schulz","Koch"],
   },
-
-  // Benelux (NL/BE)
   {
     weight: 6,
     first: ["Daan","Sem","Milan","Bram","Liam","Noah","Emma","Sanne","Lotte","Julia","Mila"],
     last: ["De Vries","Van Dijk","Bakker","Jansen","Visser","Smit","Van den Berg","Peeters","Janssens","Willems"],
   },
-
-  // Scandinavie (SE/NO/DK/FI) – léger
   {
     weight: 5,
     first: ["Oscar","Elias","Noah","William","Lucas","Maja","Ella","Alma","Freja","Ida","Sofia"],
     last: ["Johansson","Andersen","Nielsen","Hansen","Larsen","Karlsson","Svensson","Olsen","Lindberg","Eriksson"],
   },
-
-  // Europe de l’Est (PL/CZ/RO/HU) – léger
   {
     weight: 5,
     first: ["Jakub","Jan","Mateusz","Tomasz","Pavel","Andrei","Marek","Anna","Klara","Zofia","Elena","Ivana"],
     last: ["Nowak","Kowalski","Novak","Dvorak","Popescu","Ionescu","Horvat","Kovac","Nagy","Szabo"],
   },
-
-  // ✅ petite touche "international" très rare (pour ne pas être 100% Europe)
   {
     weight: 1,
     first: ["Omar","Youssef","Mariam","Nour","Karim","Amina"],
@@ -143,7 +138,7 @@ function weightedPickPool(): NamePool {
 function readUsedHolders(): Set<string> {
   const used = new Set<string>();
 
-  // 1) names already in seed + existing cards
+  // 1) names already in seed
   try {
     for (const c of seedCards) if (c?.holder) used.add(String(c.holder).toUpperCase().trim());
   } catch {}
@@ -186,7 +181,6 @@ function makeCandidateName(): string {
   const first = pool.first[randInt(0, pool.first.length - 1)];
   const last = pool.last[randInt(0, pool.last.length - 1)];
 
-  // 30% chance to add second surname if available (for realism)
   const useSecond = !!pool.last2 && Math.random() < 0.3;
   const lastPart = useSecond
     ? `${last} ${pool.last2![randInt(0, pool.last2!.length - 1)]}`
@@ -198,7 +192,6 @@ function makeCandidateName(): string {
 function generateUniqueHolderName(): string {
   const used = readUsedHolders();
 
-  // try lots of combinations
   for (let i = 0; i < 300; i++) {
     const cand = makeCandidateName();
     if (!used.has(cand)) {
@@ -207,7 +200,6 @@ function generateUniqueHolderName(): string {
     }
   }
 
-  // Fallback (should never happen): add middle initial to keep it human-looking
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   for (let i = 0; i < 300; i++) {
     const candBase = makeCandidateName();
@@ -219,7 +211,6 @@ function generateUniqueHolderName(): string {
     }
   }
 
-  // ultimate fallback
   const fallback = `CARD HOLDER ${Date.now().toString().slice(-6)}`.toUpperCase();
   persistUsedHolder(fallback);
   return fallback;
@@ -231,11 +222,14 @@ function generateUniqueHolderName(): string {
 
 export function loadCards(): Card[] {
   if (typeof window === "undefined") return seedCards;
+
   try {
     const raw = window.localStorage.getItem(LS_KEY);
     if (!raw) return seedCards;
+
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return seedCards;
+
     return parsed as Card[];
   } catch {
     return seedCards;
@@ -246,6 +240,10 @@ export function saveCards(cards: Card[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(LS_KEY, JSON.stringify(cards));
 }
+
+/* ---------------------------------------------
+   Slot helpers (si tes écrans les utilisent)
+---------------------------------------------- */
 
 export function generateSolanaAddress() {
   const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -260,82 +258,83 @@ export function pickFeeEuro(): FeeEur {
   return fees[randInt(0, fees.length - 1)];
 }
 
-function makeTopup(args: {
+/**
+ * ✅ Transaction Topup (pour que tes lignes soient cliquables via meta.ref)
+ */
+function makeTopupTx(args: {
   amount: number;
-  status: "Succeed" | "Failed";
-  ref: string; // always for clickable rows
+  status: TxStatus;
+  ref: string;
   note?: string;
 }): Transaction {
   return {
     id: `p-${Date.now()}-${randInt(100, 999)}`,
-    type: "Auth",
+    type: "Topup",
     status: args.status,
     description: args.status === "Succeed" ? "Topup - Card Funding" : "Topup failed",
     amount: Number(args.amount.toFixed(2)),
     date: nowIso(),
-    meta: { ref: args.ref, kind: "deposit", note: args.note },
+    meta: {
+      ref: args.ref,
+      note: args.note,
+    },
   };
 }
 
 /**
  * Draft card generation (slot flow)
- * - transactions empty
- * - topups empty
- * - not active yet
+ * ✅ On renvoie une Card valide (champs requis),
+ * et on peut stocker des champs extra (name/isActive/activationFeeEur) sans casser TS.
  */
 export function createDraftCardForSlot(slot: string) {
   const last4 = pad4(randInt(0, 9999));
   const id = `solcard-${Date.now()}-${randInt(100, 999)}`;
 
-  const card: Card = {
+  const card: StoredCard = {
     id,
-    name: "SolCard",
-    pan: makePan(last4),
-    cvv: String(randInt(100, 999)),
-    ending: last4,
-
-    // ✅ NEW: unique international holder name
     holder: generateUniqueHolderName(),
+    ending: last4,
     expires: makeExpiry(),
 
     balance: 0,
     depositUsed: 0,
     depositLimit: 100000,
 
-    transactions: [], // ✅ new card = zero transactions
-    topups: [],
+    transactions: [],
 
+    // extras (si tes écrans slot les utilisent)
+    name: "SolCard",
+    pan: makePan(last4),
+    cvv: String(randInt(100, 999)),
     isActive: false,
     activationFeeEur: undefined,
     forceLimitFail: false,
   };
 
   const solAddress = generateSolanaAddress();
-  return { card, solAddress, slot };
+  return { card: card as Card, solAddress, slot };
 }
 
 /**
- * Activate card (ALWAYS succeeds):
+ * Activate card:
  * - initial balance 40..60
- * - initial topup created
- * - transactions stay empty
+ * - ajoute un Topup succeed dans transactions
  */
 export function activateCard(cards: Card[], cardId: string, feeEur: FeeEur): Card[] {
   const initial = randInt(40, 60);
   const ref = `ACT-${Date.now().toString().slice(-6)}-${randInt(100, 999)}`;
 
-  const activationTopup: Transaction = {
-    id: `p-${Date.now()}-${randInt(100, 999)}`,
-    type: "Auth",
+  const topup = makeTopupTx({
+    amount: initial,
     status: "Succeed",
-    description: "Topup - Card Funding",
-    amount: Number(initial.toFixed(2)),
-    date: nowIso(),
-    meta: { ref, kind: "activation", note: `Activation fee €${feeEur}` },
-  };
+    ref,
+    note: `Activation fee €${feeEur}`,
+  });
 
-  return cards.map((c) => {
+  return (cards as StoredCard[]).map((c) => {
     if (c.id !== cardId) return c;
+
+    // si déjà active, ne pas doubler
     if (c.isActive) return c;
 
     return {
@@ -344,24 +343,27 @@ export function activateCard(cards: Card[], cardId: string, feeEur: FeeEur): Car
       activationFeeEur: feeEur,
       balance: Number(initial.toFixed(2)),
       depositUsed: Number(initial.toFixed(2)),
-      transactions: [], // ✅ stays empty
-      topups: [activationTopup],
+      transactions: [topup, ...(c.transactions ?? [])],
     };
-  });
+  }) as Card[];
 }
+
+/* ---------------------------------------------
+   Feature flags / deposits / transactions
+---------------------------------------------- */
 
 /**
  * ✅ Per-card toggle: only this card will fail the "limit" validation
  */
 export function setCardForceLimitFail(cards: Card[], cardId: string, value: boolean): Card[] {
-  return cards.map((c) => (c.id === cardId ? { ...c, forceLimitFail: value } : c));
+  return (cards as StoredCard[]).map((c) => (c.id === cardId ? { ...c, forceLimitFail: value } : c)) as Card[];
 }
 
 /**
  * Deposit attempt:
- * - always logs a topup row (Succeed or Failed) so it’s visible + clickable
- * - if failed: does NOT change balance
- * - if succeed: adds to balance & depositUsed
+ * - log une transaction "Topup" (Succeed ou Failed) visible + cliquable (meta.ref)
+ * - si Failed: ne change pas le solde
+ * - si Succeed: solde + depositUsed augmentent
  */
 export function recordDepositAttempt(
   cards: Card[],
@@ -373,23 +375,21 @@ export function recordDepositAttempt(
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) return cards;
 
-  const topup = makeTopup({
+  const topup = makeTopupTx({
     amount: amt,
     status: ok ? "Succeed" : "Failed",
     ref,
     note: ok ? "Deposit confirmed" : "Limit validation required",
   });
 
-  return cards.map((c) => {
+  return (cards as StoredCard[]).map((c) => {
     if (c.id !== cardId) return c;
-    if (!c.isActive) return c;
+
+    // on ajoute TOUJOURS la ligne topup
+    const nextTx = [topup, ...(c.transactions ?? [])];
 
     if (!ok) {
-      return {
-        ...c,
-        transactions: c.transactions ?? [],
-        topups: [topup, ...(c.topups ?? [])],
-      };
+      return { ...c, transactions: nextTx };
     }
 
     const nextBalance = Number(((c.balance ?? 0) + amt).toFixed(2));
@@ -399,29 +399,18 @@ export function recordDepositAttempt(
       ...c,
       balance: nextBalance,
       depositUsed: nextDepositUsed,
-      transactions: c.transactions ?? [],
-      topups: [topup, ...(c.topups ?? [])],
+      transactions: nextTx,
     };
-  });
+  }) as Card[];
 }
-export function transferFromMaster(
-  cards: Card[],
-  masterId: string,
-  toId: string,
-  amount: number
-): { next: Card[]; ref: string; error?: string } {
-  // Tu peux reprendre exactement la fonction inline `transferFromMasterLocal`
-  // (copier-coller tel quel) et l’exporter ici.
-  // Ensuite dans page.tsx tu remplaces `transferFromMasterLocal(...)`
-  // par `transferFromMaster(...)`.
-  return { next: cards, ref: "", error: "Not implemented" };
-}
-import type { TxStatus, TxType } from "@/lib/mock-data"; // si déjà importé, ignore
 
 function txId(prefix = "t") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
 }
 
+/**
+ * ✅ Ajoute une dépense "Auth" (ou autre type si fourni)
+ */
 export function addFakeTransactionToCard(
   cards: Card[],
   cardId: string,
@@ -429,7 +418,7 @@ export function addFakeTransactionToCard(
     description: string;
     amount: number;
     status?: TxStatus; // "Succeed" | "Failed"
-    type?: TxType; // "Auth" | "Verification"
+    type?: TxType; // "Auth" | "Topup"
     dateIso?: string; // optionnel
     ref?: string; // optionnel
     note?: string; // optionnel
@@ -448,11 +437,8 @@ export function addFakeTransactionToCard(
     meta: tx.ref || tx.note ? { ref: tx.ref, note: tx.note } : undefined,
   };
 
-  return cards.map((c) => {
+  return (cards as StoredCard[]).map((c) => {
     if (c.id !== cardId) return c;
-    return {
-      ...c,
-      transactions: [created, ...(c.transactions ?? [])],
-    };
-  });
+    return { ...c, transactions: [created, ...(c.transactions ?? [])] };
+  }) as Card[];
 }
