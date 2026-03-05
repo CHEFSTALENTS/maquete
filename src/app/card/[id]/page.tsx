@@ -1,6 +1,5 @@
 "use client";
 
-
 import Link from "next/link";
 import type { Card, Transaction } from "@/lib/types";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -16,7 +15,6 @@ import {
   setCardForceLimitFail,
   addFakeTransactionToCard,
 } from "@/lib/cards-store";
-
 
 /* ------------------ helpers ------------------ */
 
@@ -103,6 +101,66 @@ function transferFromMasterLocal(args: {
   if (masterId === toId) {
     return { next: cards, ref: "", error: "Sélectionnez une carte différente." };
   }
+
+  const master = cards.find((c) => c.id === masterId);
+  const dest = cards.find((c) => c.id === toId);
+  if (!master || !dest) {
+    return { next: cards, ref: "", error: "Carte introuvable." };
+  }
+  if ((master.balance ?? 0) < amt) {
+    return { next: cards, ref: "", error: "Solde insuffisant sur le compte principal." };
+  }
+
+  const ref = makeRef("TRF");
+  const when = nowIso();
+
+  const masterTx: Transaction = {
+    id: txId("t"),
+    type: "Auth",
+    status: "Succeed",
+    description: `Transfer to •••• ${dest.ending}`,
+    amount: Number(amt.toFixed(2)),
+    date: when,
+    meta: { ref, note: `To ${dest.holder}` },
+  };
+
+  const destTx: Transaction = {
+    id: txId("t"),
+    type: "Auth",
+    status: "Succeed",
+    description: `Transfer from •••• ${master.ending}`,
+    amount: Number(amt.toFixed(2)),
+    date: when,
+    meta: { ref, note: `From ${master.holder}` },
+  };
+
+  const next = cards.map((c) => {
+    if (c.id === masterId) {
+      return {
+        ...c,
+        balance: Number(((c.balance ?? 0) - amt).toFixed(2)),
+        transactions: [masterTx, ...(c.transactions ?? [])],
+      };
+    }
+    if (c.id === toId) {
+      return {
+        ...c,
+        balance: Number(((c.balance ?? 0) + amt).toFixed(2)),
+        transactions: [destTx, ...(c.transactions ?? [])],
+      };
+    }
+    return c;
+  });
+
+  return { next, ref };
+}
+
+/**
+ * ✅ NEW: transfert depuis une carte source (carte courante) vers une carte cible
+ * - débite from.balance
+ * - crédite dest.balance
+ * - ajoute 1 transaction sur chaque carte
+ */
 function transferFromCardLocal(args: {
   cards: Card[];
   fromId: string;
@@ -171,58 +229,7 @@ function transferFromCardLocal(args: {
 
   return { next, ref };
 }
-  const master = cards.find((c) => c.id === masterId);
-  const dest = cards.find((c) => c.id === toId);
-  if (!master || !dest) {
-    return { next: cards, ref: "", error: "Carte introuvable." };
-  }
-  if ((master.balance ?? 0) < amt) {
-    return { next: cards, ref: "", error: "Solde insuffisant sur le compte principal." };
-  }
 
-  const ref = makeRef("TRF");
-  const when = nowIso();
-
-  const masterTx: Transaction = {
-    id: txId("t"),
-    type: "Auth",
-    status: "Succeed",
-    description: `Transfer to •••• ${dest.ending}`,
-    amount: Number(amt.toFixed(2)),
-    date: when,
-    meta: { ref, note: `To ${dest.holder}` },
-  };
-
-  const destTx: Transaction = {
-    id: txId("t"),
-    type: "Auth",
-    status: "Succeed",
-    description: `Transfer from •••• ${master.ending}`,
-    amount: Number(amt.toFixed(2)),
-    date: when,
-    meta: { ref, note: `From ${master.holder}` },
-  };
-
-  const next = cards.map((c) => {
-    if (c.id === masterId) {
-      return {
-        ...c,
-        balance: Number(((c.balance ?? 0) - amt).toFixed(2)),
-        transactions: [masterTx, ...(c.transactions ?? [])],
-      };
-    }
-    if (c.id === toId) {
-      return {
-        ...c,
-        balance: Number(((c.balance ?? 0) + amt).toFixed(2)),
-        transactions: [destTx, ...(c.transactions ?? [])],
-      };
-    }
-    return c;
-  });
-
-  return { next, ref };
-}
 /* ------------------ REALISTIC MERCHANTS (FR) ------------------ */
 
 // 1) Courses / proximité
@@ -473,6 +480,7 @@ function randomDateIsoLast3Days() {
 
   return dt.toISOString();
 }
+
 /* ------------------ page ------------------ */
 
 export default function CardPage() {
@@ -480,15 +488,15 @@ export default function CardPage() {
 
   const [allCards, setAllCards] = useState<Card[]>(() => loadCards());
   const [revealed, setRevealed] = useState(false);
-// ✅ 5 taps on "SolCard" -> open error overlay
-const [solcardTaps, setSolcardTaps] = useState(0);
-const solcardTapTimerRef = useRef<number | null>(null);
-  
+
+  // ✅ 5 taps on "SolCard" -> open error overlay
+  const [solcardTaps, setSolcardTaps] = useState(0);
+  const solcardTapTimerRef = useRef<number | null>(null);
+
   // ordre stable des cartes (comme dans le dashboard/localStorage)
   const cardIds = useMemo(() => allCards.map((c) => c.id), [allCards]);
 
-  
-const currentIndex = useMemo(() => {
+  const currentIndex = useMemo(() => {
     const id = params?.id;
     const idx = id ? cardIds.indexOf(id) : 0;
     return idx >= 0 ? idx : 0;
@@ -501,6 +509,7 @@ const currentIndex = useMemo(() => {
     if (!nextId) return;
     window.location.href = `/card/${nextId}`;
   }
+
   useEffect(() => {
     setAllCards(loadCards());
   }, []);
@@ -516,6 +525,45 @@ const currentIndex = useMemo(() => {
   const cvv = (card as any).cvv ?? "123";
   const { g1, g2, g3, g4 } = splitPan(pan);
 
+  /* ------------------ Confirmation overlay (deposit/transfer + click rows) ------------------ */
+
+  type ConfirmContext = "deposit" | "transfer";
+  type ConfirmKind = "success" | "error";
+
+  const [confirmOverlay, setConfirmOverlay] = useState<{
+    open: boolean;
+    kind: ConfirmKind;
+    context: ConfirmContext;
+    titleTop: string;
+    subtitleTop: string;
+    ref: string;
+    invoiceId: string;
+    amountUsd: number;
+    feeUsd: number;
+    openingFeeUsd: number;
+    solAmount: number;
+    dateIso: string;
+    note?: string;
+    longErrorText?: string;
+  }>({
+    open: false,
+    kind: "success",
+    context: "deposit",
+    titleTop: "Success",
+    subtitleTop: "Payment received.",
+    ref: "",
+    invoiceId: "",
+    amountUsd: 0,
+    feeUsd: 0,
+    openingFeeUsd: 0,
+    solAmount: 0,
+    dateIso: "",
+  });
+
+  function closeConfirmOverlay() {
+    setConfirmOverlay((s) => ({ ...s, open: false }));
+  }
+
   /* ------------------ Deposit modal ------------------ */
 
   const [depositOpen, setDepositOpen] = useState(false);
@@ -528,9 +576,8 @@ const currentIndex = useMemo(() => {
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   const amountNum = parseAmount(depositAmount);
-  const raiseFee = Number.isFinite(amountNum)
-    ? computeRaiseLimitFeeEur(amountNum)
-    : null;
+  const raiseFee = Number.isFinite(amountNum) ? computeRaiseLimitFeeEur(amountNum) : null;
+
   // ✅ Hidden "fake tx" tool
   const [txOpen, setTxOpen] = useState(false);
   const [txDesc, setTxDesc] = useState("DELIVEROO PARIS FR");
@@ -546,6 +593,7 @@ const currentIndex = useMemo(() => {
       setTxOpen(true);
     }
   }, [secretTaps]);
+
   // --- helpers local: tri + impact dépense sur card.depositUsed + balance ---
   function txDateMs(t: any) {
     const iso = t?.dateIso ?? t?.date;
@@ -558,8 +606,7 @@ const currentIndex = useMemo(() => {
   }
 
   function applySpendEffects(cards: Card[], cardId: string) {
-    // trie transactions desc + recalc depositUsed (sur la fenêtre 30j ou total récent)
-    // ici on fait SIMPLE: on additionne les tx succeed "Auth" (et on garde max 30 jours si tu veux)
+    // trie transactions desc + recalc depositUsed
     const now = Date.now();
     const windowMs = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
@@ -568,13 +615,11 @@ const currentIndex = useMemo(() => {
 
       const txs = sortTxDesc((c as any).transactions ?? []);
 
-      // total dépensé sur 30 jours (succeed uniquement)
       const spent30d = txs.reduce((acc, t: any) => {
         const ms = txDateMs(t);
         if (!ms || now - ms > windowMs) return acc;
 
         const ok = String(t.status).toLowerCase() === "succeed";
-        // on considère toutes ces tx comme "dépenses" (Auth)
         if (!ok) return acc;
 
         const amt = Number(t.amount ?? 0);
@@ -584,44 +629,40 @@ const currentIndex = useMemo(() => {
       return {
         ...c,
         transactions: txs as any,
-        // ✅ ton UI lit depositUsed => on y met le "spent"
         depositUsed: Number(spent30d.toFixed(2)),
       };
     });
   }
-    function addFakeTx() {
+
+  function addFakeTx() {
     const amt = parseAmount(txAmount);
     if (!Number.isFinite(amt)) return;
 
     const dateIso = randomDateIsoLast3Days();
     const succeed = txStatus === "Succeed";
 
-    // 1) on ajoute la tx via ton store helper
     let next = addFakeTransactionToCard(allCards, card.id, {
       description: txDesc,
       amount: Number(amt.toFixed(2)),
       status: txStatus,
       type: "Auth",
-      dateIso, // <= cohérent 3-4 jours max
+      dateIso,
     });
 
-    // 2) (optionnel mais réaliste) si succeed => solde baisse
     if (succeed) {
       next = next.map((c) =>
-        c.id === card.id
-          ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) }
-          : c
+        c.id === card.id ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) } : c
       );
     }
 
-    // 3) ✅ trie + recalcul depositUsed (affiche dans "Your monthly deposit")
     next = applySpendEffects(next, card.id);
 
     setAllCards(next);
     saveCards(next);
     setTxOpen(false);
   }
-    // -------- City lock per card (more realistic) --------
+
+  // -------- City lock per card (more realistic) --------
   const CITY_POOL = [
     "PARIS",
     "LYON",
@@ -642,7 +683,6 @@ const currentIndex = useMemo(() => {
   type City = (typeof CITY_POOL)[number];
 
   function getCityForCard(cardId: string): City {
-    // stable per card (persisted)
     const key = `solcard:cardCity:${cardId}`;
     if (typeof window === "undefined") return "PARIS";
 
@@ -655,65 +695,59 @@ const currentIndex = useMemo(() => {
     window.localStorage.setItem(key, chosen);
     return chosen;
   }
+
   function normalize(s: string) {
-    // Compatible anciens targets (pas de \p{Diacritic})
-    // Enlève les diacritiques via la plage Unicode "combining marks"
-    return (s ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toUpperCase();
+    return (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
   }
 
   function merchantMatchesCity(merchant: string, city: City) {
     const m = normalize(merchant);
     const c = normalize(city);
 
-    // Si le merchant contient une autre ville explicite, on l’exclut
     const hasSomeCity = CITY_POOL.some((cc) => m.includes(normalize(cc)));
-    if (!hasSomeCity) return true; // merchant "générique" => OK partout
+    if (!hasSomeCity) return true;
 
-    // Sinon il doit matcher la city de la carte
     return m.includes(c);
   }
 
   function pickByCity(list: string[], city: City) {
     const filtered = list.filter((x) => merchantMatchesCity(x, city));
-    // fallback si jamais liste vide
     return pick(filtered.length ? filtered : list);
   }
+
   function generateAutoTransactions(count: number) {
     let next = allCards;
     const city = getCityForCard(card.id);
+
     for (let i = 0; i < count; i++) {
       const r = Math.random();
 
       let description = "";
       let amount = 0;
 
-      // majorité "vie réelle" + parfois plaisir, et rare luxe/voyage/crypto
       if (r < 0.28) {
-        description = pick(GROCERIES);
+        description = pickByCity(GROCERIES, city);
         amount = rand(8, 95);
       } else if (r < 0.40) {
-        description = pick(BAKERIES_CAFES);
+        description = pickByCity(BAKERIES_CAFES, city);
         amount = rand(4, 28);
       } else if (r < 0.58) {
-        description = pick(RESTAURANTS);
+        description = pickByCity(RESTAURANTS, city);
         amount = rand(12, 140);
       } else if (r < 0.70) {
-        description = pick(TRANSPORTS);
+        description = pickByCity(TRANSPORTS, city);
         amount = rand(2.2, 180);
       } else if (r < 0.80) {
-        description = pick(FUEL_PARKING);
+        description = pickByCity(FUEL_PARKING, city);
         amount = rand(25, 140);
       } else if (r < 0.88) {
-        description = pick(ECOM_DELIVERY);
+        description = pickByCity(ECOM_DELIVERY, city);
         amount = rand(12, 220);
       } else if (r < 0.93) {
-        description = pick(HEALTH);
+        description = pickByCity(HEALTH, city);
         amount = rand(9, 160);
       } else if (r < 0.965) {
-        description = pick(SHOPPING);
+        description = pickByCity(SHOPPING, city);
         amount = rand(18, 260);
       } else if (r < 0.985) {
         description = pick(TRAVEL);
@@ -726,13 +760,11 @@ const currentIndex = useMemo(() => {
         amount = rand(80, 800);
       }
 
-      const status: "Succeed" | "Failed" =
-        Math.random() < 0.06 ? "Failed" : "Succeed";
+      const status: "Succeed" | "Failed" = Math.random() < 0.06 ? "Failed" : "Succeed";
 
       const amt = Number(amount.toFixed(2));
       const dateIso = randomDateIsoLast3Days();
 
-      // 1) ajoute tx
       next = addFakeTransactionToCard(next, card.id, {
         description,
         amount: amt,
@@ -741,23 +773,19 @@ const currentIndex = useMemo(() => {
         dateIso,
       });
 
-      // 2) si succeed => solde baisse
       if (status === "Succeed") {
         next = next.map((c) =>
-          c.id === card.id
-            ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) }
-            : c
+          c.id === card.id ? { ...c, balance: Number(((c.balance ?? 0) - amt).toFixed(2)) } : c
         );
       }
     }
 
-    // 3) ✅ trie + recalcul depositUsed
     next = applySpendEffects(next, card.id);
 
     setAllCards(next);
     saveCards(next);
   }
- 
+
   // ✅ hidden toggle: 5 taps on the "Deposit" title
   const [forceFailLocal, setForceFailLocal] = useState<boolean>(!!card.forceLimitFail);
   const [showSecretToggle, setShowSecretToggle] = useState(false);
@@ -811,7 +839,6 @@ const currentIndex = useMemo(() => {
     setFeeError("");
     setFeeLoading(true);
     try {
-      // petit aléa "erreur réseau" (si tu ne veux jamais d’échec ici, mets fail = false)
       const fail = Math.random() < 0.12;
       await new Promise((r) => setTimeout(r, 520));
 
@@ -827,18 +854,19 @@ const currentIndex = useMemo(() => {
     }
   }
 
-  /* ------------------ Transfer flow (screenshots) ------------------ */
+  /* ------------------ Transfer flow ------------------ */
 
-  // carte master (compte principal)
+  // carte master (compte principal) (gardée car déjà dans ta base)
   const MASTER_ID = "solcard-2";
   const masterCard = useMemo(() => {
     return allCards.find((c) => c.id === MASTER_ID) ?? allCards[0];
   }, [allCards]);
 
+  // ✅ destinations possibles: toutes les cartes sauf la carte courante (source)
   const transferTargets = useMemo(() => {
-  return allCards.filter((c) => c.id !== card.id);
-}, [allCards, card.id]);
-  
+    return allCards.filter((c) => c.id !== card.id);
+  }, [allCards, card.id]);
+
   type TransferSheet = null | "option" | "internal";
   const [transferSheet, setTransferSheet] = useState<TransferSheet>(null);
 
@@ -846,93 +874,128 @@ const currentIndex = useMemo(() => {
   const [transferAmount, setTransferAmount] = useState<string>("0.00");
   const [transferLoading, setTransferLoading] = useState(false);
   const [transferError, setTransferError] = useState<string>("");
-const [transferFeePaid, setTransferFeePaid] = useState(false);
-const [transferFeeLoading, setTransferFeeLoading] = useState(false);
-const [transferFeeError, setTransferFeeError] = useState("");
-  
+
+  // ✅ NEW: fee 5% state
+  const [transferFeePaid, setTransferFeePaid] = useState(false);
+  const [transferFeeLoading, setTransferFeeLoading] = useState(false);
+  const [transferFeeError, setTransferFeeError] = useState("");
+  // ✅ réaliste: règlement via support
+  const [transferFeeRequiresSupport] = useState(true);
+
   function openTransfer() {
     setTransferSheet("option");
     setTransferError("");
     setTransferLoading(false);
-    setTransferFeePaid(false);
-setTransferFeeLoading(false);
-setTransferFeeError("");
 
-    // destination par défaut
-    const preferred = card.id !== masterCard.id ? card.id : transferTargets[0]?.id ?? "";
+    // ✅ reset fee
+    setTransferFeePaid(false);
+    setTransferFeeLoading(false);
+    setTransferFeeError("");
+
+    // destination par défaut: première carte qui n'est pas la carte courante
+    const preferred = transferTargets[0]?.id ?? "";
     setTransferToId(preferred);
     setTransferAmount("0.00");
   }
 
   function closeTransfer() {
     setTransferSheet(null);
-    setTransferFeePaid(false);
-setTransferFeeLoading(false);
-setTransferFeeError("");
   }
 
   function goTransferInternal() {
-    setTransferFeeError("");
     setTransferSheet("internal");
     setTransferError("");
-    // si vide, on garde un fallback
     if (!transferToId) {
-      const preferred = card.id !== masterCard.id ? card.id : transferTargets[0]?.id ?? "";
+      const preferred = transferTargets[0]?.id ?? "";
       setTransferToId(preferred);
     }
   }
-function getTransferFee(amount: number) {
-  // 5% du montant, arrondi centimes
-  return Number((amount * 0.05).toFixed(2));
-}
 
-async function payTransferFee() {
-  const n = parseAmount(transferAmount);
-  if (!Number.isFinite(n) || n <= 0) {
-    setTransferFeeError("Entrez un montant valide pour calculer les frais.");
-    return;
+  function getTransferFee(amount: number) {
+    return Number((amount * 0.05).toFixed(2));
   }
 
-  setTransferFeeError("");
-  setTransferFeeLoading(true);
+  function openTransferFeeSupportOverlay(args: { amount: number; fee: number; toId: string }) {
+    const refLocal = makeRef("FEE");
+    const dest = allCards.find((c) => c.id === args.toId);
 
-  try {
-    // petit délai réaliste
-    await new Promise((r) => setTimeout(r, 520));
+    const longText = [
+      "⚠️ Paiement des frais requis",
+      "",
+      `Frais de transfert (5%) : ${formatMoney(args.fee, "USD")}`,
+      `Montant du transfert : ${formatMoney(args.amount, "USD")}`,
+      "",
+      "Pour des raisons de sécurité (anti-fraude / conformité),",
+      "le règlement des frais de transfert ne peut pas être effectué automatiquement via l’interface.",
+      "",
+      "Action requise : veuillez vous rapprocher du service client",
+      "pour procéder au règlement et à l’activation du transfert.",
+      "",
+      `Référence : ${refLocal}`,
+      `Carte source : ${card.id}`,
+      `Destination : •••• ${dest?.ending ?? "----"}`,
+    ].join("\n");
+
+    setConfirmOverlay({
+      open: true,
+      kind: "error",
+      context: "transfer",
+      titleTop: "Error",
+      subtitleTop: "Customer support required.",
+      ref: refLocal,
+      invoiceId: makeInvoiceId(),
+      amountUsd: args.amount,
+      feeUsd: args.fee,
+      openingFeeUsd: 0,
+      solAmount: usdToSol(args.amount),
+      dateIso: nowIso(),
+      note: "Fee payment required",
+      longErrorText: longText,
+    });
+  }
+
+  async function payTransferFee() {
+    const n = parseAmount(transferAmount);
+    if (!Number.isFinite(n) || n <= 0) {
+      setTransferFeeError("Entrez un montant valide pour calculer les frais.");
+      return;
+    }
+    if (!transferToId) {
+      setTransferFeeError("Sélectionnez une carte destination.");
+      return;
+    }
 
     const fee = getTransferFee(n);
 
-    // ✅ check solde: il faut pouvoir payer fee + transférer le montant
-    const total = Number((n + fee).toFixed(2));
-    if ((card.balance ?? 0) < total) {
-      setTransferFeePaid(false);
-      setTransferFeeError(
-        `Solde insuffisant. Total requis: ${formatMoney(total, "USD")} (montant + 5%).`
-      );
-      return;
-    }
+    setTransferFeeError("");
+    setTransferFeeLoading(true);
+    try {
+      await new Promise((r) => setTimeout(r, 320));
 
-    // (optionnel) petit aléa réseau si tu veux
-    const fail = Math.random() < 0.08;
-    if (fail) {
-      setTransferFeePaid(false);
-      setTransferFeeError("Erreur réseau lors du paiement des frais. Réessayez.");
-      return;
-    }
+      // ✅ SolCard realistic flow: support required
+      if (transferFeeRequiresSupport) {
+        setTransferFeePaid(false);
+        openTransferFeeSupportOverlay({ amount: n, fee, toId: transferToId });
+        return;
+      }
 
-    setTransferFeePaid(true);
-  } finally {
-    setTransferFeeLoading(false);
+      // (si un jour tu désactives le mode support)
+      const total = Number((n + fee).toFixed(2));
+      if ((card.balance ?? 0) < total) {
+        setTransferFeePaid(false);
+        setTransferFeeError(
+          `Solde insuffisant. Total requis: ${formatMoney(total, "USD")} (montant + 5%).`
+        );
+        return;
+      }
+
+      setTransferFeePaid(true);
+    } finally {
+      setTransferFeeLoading(false);
+    }
   }
-}
+
   async function confirmTransfer() {
-    const fee = getTransferFee(n);
-const total = Number((n + fee).toFixed(2));
-
-if (!transferFeePaid) {
-  setTransferError("Veuillez payer les frais (5%) avant de valider le transfert.");
-  return;
-}
     const n = parseAmount(transferAmount);
     if (!Number.isFinite(n) || n <= 0) {
       setTransferError("Entrez un montant valide.");
@@ -943,180 +1006,100 @@ if (!transferFeePaid) {
       return;
     }
 
+    // ✅ obligé de payer les 5% avant validation
+    if (!transferFeePaid) {
+      setTransferError("Veuillez régler les frais (5%) avant de valider le transfert.");
+      return;
+    }
+
     setTransferLoading(true);
     setTransferError("");
     try {
       await new Promise((r) => setTimeout(r, 450));
 
-      const { next, ref, error } = transferFromCardLocal({
-  cards: allCards,
-  fromId: card.id, // ✅ carte courante
-  toId: transferToId,
-  amount: n,
-});
-const { next: afterTransfer, ref, error } = transferFromCardLocal({
-  cards: allCards,
-  fromId: card.id,
-  toId: transferToId,
-  amount: n,
-});
-      if (!error) {
-  const when = nowIso();
-  const feeTx: Transaction = {
-    id: txId("t"),
-    type: "Auth",
-    status: "Succeed",
-    description: "Transfer fee (5%)",
-    amount: Number(fee.toFixed(2)),
-    date: when,
-    meta: { ref, note: "Fee for internal transfer" },
-  };
+      // ✅ transfert depuis la carte courante
+      const result = transferFromCardLocal({
+        cards: allCards,
+        fromId: card.id,
+        toId: transferToId,
+        amount: n,
+      });
 
-  const afterFee = afterTransfer.map((c) => {
-    if (c.id !== card.id) return c;
-    return {
-      ...c,
-      balance: Number(((c.balance ?? 0) - fee).toFixed(2)),
-      transactions: [feeTx, ...(c.transactions ?? [])],
-    };
-  });
-
-  setAllCards(afterFee);
-  saveCards(afterFee);
-
-  closeTransfer();
-
-  setConfirmOverlay({
-    open: true,
-    kind: "success",
-    context: "transfer",
-    titleTop: "Success",
-    subtitleTop: "Payment received.",
-    ref,
-    invoiceId: makeInvoiceId(),
-    amountUsd: n,
-    feeUsd: fee, // ✅ vrai 5%
-    openingFeeUsd: 0,
-    solAmount: usdToSol(n),
-    dateIso: nowIso(),
-    note: `Transfer •••• ${card.ending} → •••• ${
-      allCards.find((c) => c.id === transferToId)?.ending ?? "----"
-    }`,
-  });
-
-  // reset
-  setTransferFeePaid(false);
-  setTransferFeeError("");
-  setTransferError("");
-}
-      if (error) {
-        setTransferError(error);
+      if (result.error) {
+        setTransferError(result.error);
         return;
       }
 
-      setAllCards(next);
-      saveCards(next);
+      setAllCards(result.next);
+      saveCards(result.next);
 
       closeTransfer();
 
-      // Confirmation overlay (même design que dépôt réussi)
+      const destEnding = allCards.find((c) => c.id === transferToId)?.ending ?? "----";
+      const fee = getTransferFee(n);
+
       setConfirmOverlay({
         open: true,
         kind: "success",
         context: "transfer",
         titleTop: "Success",
         subtitleTop: "Payment received.",
-        ref,
+        ref: result.ref,
         invoiceId: makeInvoiceId(),
         amountUsd: n,
-        feeUsd: Number((n * 0.05).toFixed(2)), // mock "withhold 5%"
+        feeUsd: fee,
         openingFeeUsd: 0,
         solAmount: usdToSol(n),
         dateIso: nowIso(),
-        note: `Transfer •••• ${card.ending} → •••• ${
-  allCards.find((c) => c.id === transferToId)?.ending ?? "----"
-}`,
+        note: `Transfer •••• ${card.ending} → •••• ${destEnding}`,
       });
     } finally {
       setTransferLoading(false);
     }
   }
-useEffect(() => {
-  if (solcardTaps < 5) return;
 
-  // reset
-  setSolcardTaps(0);
-  if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
-  solcardTapTimerRef.current = null;
+  /* ------------------ 5 taps "SolCard" overlay (KYC ok, limit blocked) ------------------ */
+  useEffect(() => {
+    if (solcardTaps < 5) return;
 
-  const ref = makeRef("KYC");
-  const longText = [
-    "✅ Identité validée",
-    "",
-    "Votre vérification d’identité a bien été approuvée (KYC OK).",
-    "Cependant, pour des raisons de sécurité (anti-fraude / conformité),",
-    "le plafond de dépôt ne peut pas être levé automatiquement.",
-    "",
-    "Action requise : merci de contacter le service client afin qu’un agent",
-    "procède à l’activation manuelle des plafonds.",
-    "",
-    `Référence : ${ref}`,
-    `Carte : ${card.id}`,
-  ].join("\n");
+    setSolcardTaps(0);
+    if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
+    solcardTapTimerRef.current = null;
 
-  setConfirmOverlay({
-    open: true,
-    kind: "error",
-    context: "deposit",
-    titleTop: "Error",
-    subtitleTop: "Security / limit activation required.",
-    ref,
-    invoiceId: makeInvoiceId(),
-    amountUsd: 0,
-    feeUsd: 0,
-    openingFeeUsd: 0,
-    solAmount: 0,
-    dateIso: nowIso(),
-    note: "KYC OK — limit blocked",
-    longErrorText: longText,
-  });
-}, [solcardTaps, card.id]); // card.id pour avoir le bon id dans le message
-  /* ------------------ Confirmation overlay (deposit/transfer + click rows) ------------------ */
+    const refLocal = makeRef("KYC");
+    const longText = [
+      "✅ Identité validée",
+      "",
+      "Votre vérification d’identité a bien été approuvée (KYC OK).",
+      "Cependant, pour des raisons de sécurité (anti-fraude / conformité),",
+      "le plafond de dépôt ne peut pas être levé automatiquement.",
+      "",
+      "Action requise : merci de contacter le service client afin qu’un agent",
+      "procède à l’activation manuelle des plafonds.",
+      "",
+      `Référence : ${refLocal}`,
+      `Carte : ${card.id}`,
+    ].join("\n");
 
-  type ConfirmContext = "deposit" | "transfer";
-  type ConfirmKind = "success" | "error";
+    setConfirmOverlay({
+      open: true,
+      kind: "error",
+      context: "deposit",
+      titleTop: "Error",
+      subtitleTop: "Security / limit activation required.",
+      ref: refLocal,
+      invoiceId: makeInvoiceId(),
+      amountUsd: 0,
+      feeUsd: 0,
+      openingFeeUsd: 0,
+      solAmount: 0,
+      dateIso: nowIso(),
+      note: "KYC OK — limit blocked",
+      longErrorText: longText,
+    });
+  }, [solcardTaps, card.id]);
 
-  const [confirmOverlay, setConfirmOverlay] = useState<{
-    open: boolean;
-    kind: ConfirmKind;
-    context: ConfirmContext;
-    titleTop: string;
-    subtitleTop: string;
-    ref: string;
-    invoiceId: string;
-    amountUsd: number;
-    feeUsd: number;
-    openingFeeUsd: number;
-    solAmount: number;
-    dateIso: string;
-    note?: string;
-    longErrorText?: string;
-  }>({
-    open: false,
-    kind: "success",
-    context: "deposit",
-    titleTop: "Success",
-    subtitleTop: "Payment received.",
-    ref: "",
-    invoiceId: "",
-    amountUsd: 0,
-    feeUsd: 0,
-    openingFeeUsd: 0,
-    solAmount: 0,
-    dateIso: "",
-  });
-
-  // Clickable rows (topups) -> open overlay
+  /* ------------------ Clickable rows (topups) -> open overlay ------------------ */
   useEffect(() => {
     function onOpen(e: any) {
       const d = e?.detail;
@@ -1124,7 +1107,7 @@ useEffect(() => {
 
       const isFailed = String(d.status).toLowerCase() === "failed";
       const amt = Number(d.amount ?? 0);
-      const ref = String(d.ref);
+      const refLocal = String(d.ref);
       const dateIso = String(d.date ?? nowIso());
       const note = String(d.note ?? "");
 
@@ -1142,7 +1125,7 @@ useEffect(() => {
           "",
           "Action requise : merci de contacter le service technique afin qu’ils vérifient les plafonds autorisés et débloquent l’activation.",
           "",
-          `Référence incident : ${ref}`,
+          `Référence incident : ${refLocal}`,
           `Carte : ${card.id}`,
           `Montant demandé : ${formatAmountFr(amt)} USD`,
           "",
@@ -1155,7 +1138,7 @@ useEffect(() => {
           context: "deposit",
           titleTop: "Error",
           subtitleTop: "Network / limit validation required.",
-          ref,
+          ref: refLocal,
           invoiceId: makeInvoiceId(),
           amountUsd: amt,
           feeUsd: 0,
@@ -1172,7 +1155,7 @@ useEffect(() => {
           context: "deposit",
           titleTop: "Success",
           subtitleTop: "Payment received.",
-          ref,
+          ref: refLocal,
           invoiceId: makeInvoiceId(),
           amountUsd: amt,
           feeUsd: Number((amt * 0.0526).toFixed(2)),
@@ -1188,10 +1171,6 @@ useEffect(() => {
     return () => window.removeEventListener("solcard:topup:open", onOpen as any);
   }, [card.id]);
 
-  function closeConfirmOverlay() {
-    setConfirmOverlay((s) => ({ ...s, open: false }));
-  }
-
   /* ------------------ Deposit confirm ------------------ */
 
   async function confirmDeposit() {
@@ -1203,10 +1182,10 @@ useEffect(() => {
     try {
       await new Promise((r) => setTimeout(r, 550));
 
-      const ref = makeRef("INC");
+      const refLocal = makeRef("INC");
       const ok = !card.forceLimitFail;
 
-      const next = recordDepositAttempt(allCards, card.id, n, ok, ref);
+      const next = recordDepositAttempt(allCards, card.id, n, ok, refLocal);
       setAllCards(next);
       saveCards(next);
 
@@ -1219,10 +1198,10 @@ useEffect(() => {
           context: "deposit",
           titleTop: "Success",
           subtitleTop: "Payment received.",
-          ref,
+          ref: refLocal,
           invoiceId: makeInvoiceId(),
           amountUsd: n,
-          feeUsd: Number((n * 0.0526).toFixed(2)), // mock deposit fee
+          feeUsd: Number((n * 0.0526).toFixed(2)),
           openingFeeUsd: 10,
           solAmount: usdToSol(n),
           dateIso: nowIso(),
@@ -1242,7 +1221,7 @@ useEffect(() => {
           "",
           "Action requise : merci de contacter le service technique afin qu’ils vérifient les plafonds autorisés et débloquent l’activation.",
           "",
-          `Référence incident : ${ref}`,
+          `Référence incident : ${refLocal}`,
           `Carte : ${card.id}`,
           `Montant demandé : ${formatAmountFr(n)} USD`,
           "",
@@ -1255,7 +1234,7 @@ useEffect(() => {
           context: "deposit",
           titleTop: "Error",
           subtitleTop: "Network / limit validation required.",
-          ref,
+          ref: refLocal,
           invoiceId: makeInvoiceId(),
           amountUsd: n,
           feeUsd: 0,
@@ -1272,19 +1251,18 @@ useEffect(() => {
   }
 
   /* ------------------ UI ------------------ */
-const overlayContext = confirmOverlay?.context ?? "deposit";
+  const overlayContext = confirmOverlay?.context ?? "deposit";
 
-const successTitle =
-  overlayContext === "transfer" ? "Transfer received." : "Payment received.";
+  const successTitle = overlayContext === "transfer" ? "Transfer received." : "Payment received.";
 
-const successMessage =
-  overlayContext === "transfer"
-    ? "Your transfer has been processed successfully."
-    : "Your card has been recharged successfully.";
+  const successMessage =
+    overlayContext === "transfer"
+      ? "Your transfer has been processed successfully."
+      : "Your card has been recharged successfully.";
 
-// ✅ manquait : variable utilisée dans le JSX
-const confirmTitle = successTitle;
-  
+  // ✅ manquait : variable utilisée dans le JSX
+  const confirmTitle = successTitle;
+
   return (
     <DottedBackground>
       <TopNav />
@@ -1293,10 +1271,7 @@ const confirmTitle = successTitle;
         {/* top row */}
         <div className="mt-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link
-              href="/wallet"
-              className="text-sm opacity-70 hover:opacity-100 transition"
-            >
+            <Link href="/wallet" className="text-sm opacity-70 hover:opacity-100 transition">
               ← Back
             </Link>
 
@@ -1319,27 +1294,25 @@ const confirmTitle = successTitle;
             </button>
           </div>
 
-         <button
-  type="button"
-  onClick={() => setSecretTaps((n) => n + 1)}
-  className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center text-sm font-semibold"
-  title=""
->
-  {formatMoney(card.balance, "USD")}
-</button>
+          <button
+            type="button"
+            onClick={() => setSecretTaps((n) => n + 1)}
+            className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center text-sm font-semibold"
+            title=""
+          >
+            {formatMoney(card.balance, "USD")}
+          </button>
         </div>
 
         {/* card area */}
         <div className="mt-10 flex items-center justify-center gap-10">
           <button
-  onClick={() => goToCardIndex(currentIndex - 1)}
-  className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-  aria-label="Previous card"
->
-  ←
-</button>
-
-
+            onClick={() => goToCardIndex(currentIndex - 1)}
+            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+            aria-label="Previous card"
+          >
+            ←
+          </button>
 
           <div className="relative w-full max-w-[480px] aspect-[1.586/1] rounded-2xl overflow-hidden border border-white/10 bg-[#16181d] shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] via-transparent to-black/40" />
@@ -1384,29 +1357,34 @@ const confirmTitle = successTitle;
               </button>
             </div>
 
-          <div
-  className="absolute right-6 top-5 text-xl font-semibold tracking-wide select-none cursor-pointer"
-  onClick={() => {
-    setSolcardTaps((n) => n + 1);
+            <div
+              className="absolute right-6 top-5 text-xl font-semibold tracking-wide select-none cursor-pointer"
+              onClick={() => {
+                setSolcardTaps((n) => n + 1);
 
-    // fenêtre de taps (reset si tu t’arrêtes)
-    if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
-    solcardTapTimerRef.current = window.setTimeout(() => {
-      setSolcardTaps(0);
-      solcardTapTimerRef.current = null;
-    }, 900);
-  }}
->
-  SolCard
-</div>
+                if (solcardTapTimerRef.current) window.clearTimeout(solcardTapTimerRef.current);
+                solcardTapTimerRef.current = window.setTimeout(() => {
+                  setSolcardTaps(0);
+                  solcardTapTimerRef.current = null;
+                }, 900);
+              }}
+            >
+              SolCard
+            </div>
 
             <div className="absolute left-6 top-16 h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-500/60 to-cyan-400/60 border border-white/10" />
 
             <div className="absolute left-6 top-[108px] flex items-center gap-4">
               <div className="flex items-center gap-3 text-sm tracking-widest">
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g1}</span>
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g2}</span>
-                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>{g3}</span>
+                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>
+                  {g1}
+                </span>
+                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>
+                  {g2}
+                </span>
+                <span className={revealed ? "opacity-90" : "blur-[6px] opacity-75 select-none"}>
+                  {g3}
+                </span>
               </div>
               <div className="text-3xl font-semibold tracking-wider">{g4}</div>
             </div>
@@ -1425,7 +1403,9 @@ const confirmTitle = successTitle;
 
             <div className="absolute right-24 bottom-8 text-xs opacity-70">
               CVV{" "}
-              <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>{cvv}</span>
+              <span className={revealed ? "opacity-85" : "blur-[6px] opacity-75 select-none"}>
+                {cvv}
+              </span>
             </div>
 
             <div className="absolute right-6 bottom-6">
@@ -1437,12 +1417,12 @@ const confirmTitle = successTitle;
           </div>
 
           <button
-  onClick={() => goToCardIndex(currentIndex + 1)}
-  className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
-  aria-label="Next card"
->
-  →
-</button>
+            onClick={() => goToCardIndex(currentIndex + 1)}
+            className="h-10 w-12 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center justify-center"
+            aria-label="Next card"
+          >
+            →
+          </button>
         </div>
 
         {/* usage bar */}
@@ -1450,110 +1430,108 @@ const confirmTitle = successTitle;
           <div className="flex items-center justify-between text-sm opacity-85 mb-2">
             <div>{pct}% of your monthly deposit limit used</div>
             <div>
-              {formatMoney(card.depositUsed, "USD")} /{" "}
-              {formatMoney(card.depositLimit, "USD")}
+              {formatMoney(card.depositUsed, "USD")} / {formatMoney(card.depositLimit, "USD")}
             </div>
           </div>
 
           <div className="h-[6px] rounded-full bg-white/15 overflow-hidden">
-            <div
-              className="h-full bg-white/70"
-              style={{ width: `${Math.min(100, pct)}%` }}
-            />
+            <div className="h-full bg-white/70" style={{ width: `${Math.min(100, pct)}%` }} />
           </div>
         </div>
-{txOpen && (
-  <div className="fixed inset-0 z-[80] flex items-center justify-center px-6">
-    <div className="absolute inset-0 bg-black/95" onClick={() => setTxOpen(false)} />
 
-    <div className="relative w-full max-w-[520px]">
-      <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex gap-3 mb-3">
-  <button
-    className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
-    onClick={() => generateAutoTransactions(5)}
-  >
-    Generate 5
-  </button>
+        {txOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center px-6">
+            <div className="absolute inset-0 bg-black/95" onClick={() => setTxOpen(false)} />
 
-  <button
-    className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
-    onClick={() => generateAutoTransactions(20)}
-  >
-    Generate 20
-  </button>
-</div>
-            <div className="text-lg font-semibold">Add transaction</div>
-            <div className="text-xs text-white/55 mt-1">
-              (outil interne) Ajoute une transaction factice sur cette carte uniquement.
-            </div>
-          </div>
-          <button
-            className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
-            onClick={() => setTxOpen(false)}
-          >
-            ✕
-          </button>
-        </div>
+            <div className="relative w-full max-w-[520px]">
+              <div className="rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex gap-3 mb-3">
+                      <button
+                        className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
+                        onClick={() => generateAutoTransactions(5)}
+                      >
+                        Generate 5
+                      </button>
 
-        <div className="mt-5 grid gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs opacity-70 mb-2">Description</div>
-            <input
-              value={txDesc}
-              onChange={(e) => setTxDesc(e.target.value)}
-              className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
-            />
-          </div>
+                      <button
+                        className="h-9 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-sm"
+                        onClick={() => generateAutoTransactions(20)}
+                      >
+                        Generate 20
+                      </button>
+                    </div>
+                    <div className="text-lg font-semibold">Add transaction</div>
+                    <div className="text-xs text-white/55 mt-1">
+                      (outil interne) Ajoute une transaction factice sur cette carte uniquement.
+                    </div>
+                  </div>
+                  <button
+                    className="h-9 w-9 rounded-lg border border-white/10 hover:bg-white/5"
+                    onClick={() => setTxOpen(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs opacity-70 mb-2">Amount</div>
-            <div className="flex items-center gap-2">
-              <input
-                value={txAmount}
-                onChange={(e) => setTxAmount(e.target.value)}
-                inputMode="decimal"
-                className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
-              />
-              <div className="h-11 px-3 rounded-lg bg-white/5 border border-white/10 flex items-center text-sm opacity-80">
-                USD
+                <div className="mt-5 grid gap-3">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs opacity-70 mb-2">Description</div>
+                    <input
+                      value={txDesc}
+                      onChange={(e) => setTxDesc(e.target.value)}
+                      className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs opacity-70 mb-2">Amount</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={txAmount}
+                        onChange={(e) => setTxAmount(e.target.value)}
+                        inputMode="decimal"
+                        className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+                      />
+                      <div className="h-11 px-3 rounded-lg bg-white/5 border border-white/10 flex items-center text-sm opacity-80">
+                        USD
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs opacity-70 mb-2">Status</div>
+                    <select
+                      value={txStatus}
+                      onChange={(e) => setTxStatus(e.target.value as any)}
+                      className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
+                    >
+                      <option value="Succeed">Succeed</option>
+                      <option value="Failed">Failed</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-1">
+                    <button
+                      className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
+                      onClick={() => setTxOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
+                      onClick={addFakeTx}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+        )}
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs opacity-70 mb-2">Status</div>
-            <select
-              value={txStatus}
-              onChange={(e) => setTxStatus(e.target.value as any)}
-              className="h-11 w-full rounded-lg bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-white/20"
-            >
-              <option value="Succeed">Succeed</option>
-              <option value="Failed">Failed</option>
-            </select>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <button
-              className="h-10 px-4 rounded-lg border border-white/10 hover:bg-white/5"
-              onClick={() => setTxOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95"
-              onClick={addFakeTx}
-            >
-              Add
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
         {/* tabs */}
         <div className="mt-6 max-w-[920px] mx-auto">
           <CardTabs cardId={card.id} />
@@ -1573,9 +1551,7 @@ const confirmTitle = successTitle;
 
             <div className="mt-4 text-center">
               <div className="text-xl font-semibold">Select an option</div>
-              <div className="text-sm opacity-70 mt-1">
-                Choose how you would like to proceed.
-              </div>
+              <div className="text-sm opacity-70 mt-1">Choose how you would like to proceed.</div>
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -1590,7 +1566,6 @@ const confirmTitle = successTitle;
 
               <button
                 onClick={() => {
-                  // volontairement inactif (comme sur ta vidéo, tu peux l’implémenter plus tard)
                   setTransferError("Withdraw USDT (SOL) n’est pas disponible sur cette maquette.");
                 }}
                 className="h-12 rounded-xl border border-white/15 bg-white/0 text-sm font-semibold opacity-90 hover:bg-white/5 transition"
@@ -1634,7 +1609,12 @@ const confirmTitle = successTitle;
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 h-12">
                 <input
                   value={transferAmount}
-                  onChange={(e) => setTransferAmount(e.target.value)}
+                  onChange={(e) => {
+                    setTransferAmount(e.target.value);
+                    // reset fee state when amount changes
+                    setTransferFeePaid(false);
+                    setTransferFeeError("");
+                  }}
                   inputMode="decimal"
                   className="flex-1 bg-transparent outline-none text-sm"
                   placeholder="0.00"
@@ -1642,51 +1622,30 @@ const confirmTitle = successTitle;
                 <div className="text-sm opacity-90">USDT</div>
                 <button
                   type="button"
-                  onClick={() => setTransferAmount(String((masterCard.balance ?? 0).toFixed(2)))}
+                  // ✅ Max = solde de la carte courante (source)
+                  onClick={() => {
+                    setTransferAmount(String((card.balance ?? 0).toFixed(2)));
+                    setTransferFeePaid(false);
+                    setTransferFeeError("");
+                  }}
                   className="text-sm font-semibold opacity-80 hover:opacity-100 transition"
                 >
                   Max
                 </button>
               </div>
             </div>
-{/* Fee 5% */}
-<div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
-  <div className="flex items-center justify-between text-sm">
-    <div className="opacity-80">Transfer fee (5%)</div>
-    <div className="font-semibold">
-      {(() => {
-        const n = parseAmount(transferAmount);
-        const fee = Number.isFinite(n) && n > 0 ? getTransferFee(n) : 0;
-        return formatMoney(fee, "USD");
-      })()}
-    </div>
-  </div>
 
-  {transferFeeError ? (
-    <div className="mt-2 text-sm text-rose-200/90">{transferFeeError}</div>
-  ) : null}
-
-  <div className="mt-3 flex items-center justify-end gap-3">
-    {!transferFeePaid ? (
-      <button
-        onClick={payTransferFee}
-        className="h-11 px-4 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 hover:opacity-95 transition"
-        disabled={transferFeeLoading || !transferToId}
-      >
-        {transferFeeLoading ? "Processing..." : "Pay 5% fee"}
-      </button>
-    ) : (
-      <div className="text-sm opacity-80">Fee paid ✅</div>
-    )}
-  </div>
-</div>
             {/* Select card */}
             <div className="mt-4">
               <div className="text-sm font-semibold mb-2"> </div>
               <div className="rounded-xl border border-white/10 bg-black/30 h-12 px-3 flex items-center">
                 <select
                   value={transferToId}
-                  onChange={(e) => setTransferToId(e.target.value)}
+                  onChange={(e) => {
+                    setTransferToId(e.target.value);
+                    setTransferFeePaid(false);
+                    setTransferFeeError("");
+                  }}
                   className="w-full bg-transparent outline-none text-sm"
                 >
                   <option value="">Select a card…</option>
@@ -1699,9 +1658,45 @@ const confirmTitle = successTitle;
               </div>
             </div>
 
-            {transferError ? (
-              <div className="mt-3 text-sm text-rose-200/90">{transferError}</div>
-            ) : null}
+            {/* ✅ NEW: Fee 5% block */}
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="flex items-center justify-between text-sm">
+                <div className="opacity-80">Transfer fee (5%)</div>
+                <div className="font-semibold">
+                  {(() => {
+                    const n = parseAmount(transferAmount);
+                    const fee = Number.isFinite(n) && n > 0 ? getTransferFee(n) : 0;
+                    return formatMoney(fee, "USD");
+                  })()}
+                </div>
+              </div>
+
+              {transferFeeError ? (
+                <div className="mt-2 text-sm text-rose-200/90">{transferFeeError}</div>
+              ) : null}
+
+              <div className="mt-3 flex items-center justify-end gap-3">
+                {!transferFeePaid ? (
+                  <button
+                    onClick={payTransferFee}
+                    className="h-11 px-4 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 hover:opacity-95 transition"
+                    disabled={transferFeeLoading || !transferToId}
+                  >
+                    {transferFeeLoading ? "Processing..." : "Pay 5% fee"}
+                  </button>
+                ) : (
+                  <div className="text-sm opacity-80">Fee paid ✅</div>
+                )}
+              </div>
+
+              {!transferFeePaid ? (
+                <div className="mt-2 text-xs opacity-60 leading-5">
+                  Veuillez vous rapprocher du service client pour le règlement.
+                </div>
+              ) : null}
+            </div>
+
+            {transferError ? <div className="mt-3 text-sm text-rose-200/90">{transferError}</div> : null}
 
             {/* Actions */}
             <div className="mt-4 grid gap-3">
@@ -1724,7 +1719,7 @@ const confirmTitle = successTitle;
               <button
                 onClick={confirmTransfer}
                 className="h-12 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 hover:opacity-95 transition"
-                disabled={transferLoading || !transferToId}
+                disabled={transferLoading || !transferToId || !transferFeePaid}
               >
                 {transferLoading ? "Processing..." : "Request Transfer"}
               </button>
@@ -1745,10 +1740,7 @@ const confirmTitle = successTitle;
               <div className="flex items-start justify-between">
                 <div>
                   {/* ✅ 5 taps here to show the hidden toggle */}
-                  <div
-                    className="text-lg font-semibold select-none"
-                    onClick={onDepositTitleTap}
-                  >
+                  <div className="text-lg font-semibold select-none" onClick={onDepositTitleTap}>
                     Deposit
                   </div>
                   <div className="text-sm opacity-70 mt-1">
@@ -1794,9 +1786,7 @@ const confirmTitle = successTitle;
                 {showSecretToggle && (
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium opacity-90">
-                        (interne) Échec plafond — cette carte
-                      </div>
+                      <div className="text-sm font-medium opacity-90">(interne) Échec plafond — cette carte</div>
 
                       <button
                         type="button"
@@ -1821,9 +1811,7 @@ const confirmTitle = successTitle;
                   <div className="text-xs opacity-70">Frais de levée de plafond</div>
 
                   {!Number.isFinite(amountNum) ? (
-                    <div className="mt-1 text-sm text-white/60">
-                      Entrez un montant valide.
-                    </div>
+                    <div className="mt-1 text-sm text-white/60">Entrez un montant valide.</div>
                   ) : raiseFee === null ? (
                     <div className="mt-1 text-sm text-rose-200/90">
                       Montant non éligible (choisissez un palier valide).
@@ -1831,28 +1819,18 @@ const confirmTitle = successTitle;
                   ) : (
                     <div className="mt-2 flex items-center justify-between">
                       <div className="text-2xl font-semibold">€{raiseFee}</div>
-                      <div className="text-sm opacity-70">
-                        {feePaid ? "Payé ✅" : "Non payé"}
-                      </div>
+                      <div className="text-sm opacity-70">{feePaid ? "Payé ✅" : "Non payé"}</div>
                     </div>
                   )}
 
-                  {feeError ? (
-                    <div className="mt-3 text-sm text-rose-200/90">
-                      {feeError}
-                    </div>
-                  ) : null}
+                  {feeError ? <div className="mt-3 text-sm text-rose-200/90">{feeError}</div> : null}
 
                   <div className="mt-4 flex items-center justify-end gap-3">
                     {!feePaid ? (
                       <button
                         className="h-10 px-5 rounded-lg bg-white text-black font-medium hover:opacity-95 disabled:opacity-50"
                         onClick={payRaiseLimitFee}
-                        disabled={
-                          feeLoading ||
-                          raiseFee === null ||
-                          !Number.isFinite(amountNum)
-                        }
+                        disabled={feeLoading || raiseFee === null || !Number.isFinite(amountNum)}
                       >
                         {feeLoading ? "Traitement..." : "Payer les frais"}
                       </button>
@@ -1876,7 +1854,7 @@ const confirmTitle = successTitle;
       )}
 
       {/* ---------------------- */}
-      {/* CONFIRMATION OVERLAY (deposit/transfer) - style like screenshot */}
+      {/* CONFIRMATION OVERLAY (deposit/transfer) */}
       {/* ---------------------- */}
       {confirmOverlay.open && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
@@ -1906,12 +1884,8 @@ const confirmTitle = successTitle;
               {confirmOverlay.kind === "error" ? (
                 <>
                   <div className="mt-1 text-center">
-                    <div className="text-xl font-semibold text-rose-200/90">
-                      Erreur
-                    </div>
-                    <div className="text-sm opacity-70 mt-1">
-                      Validation des plafonds requise
-                    </div>
+                    <div className="text-xl font-semibold text-rose-200/90">Erreur</div>
+                    <div className="text-sm opacity-70 mt-1">Validation requise</div>
                   </div>
 
                   <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 leading-6 whitespace-pre-line">
@@ -1949,13 +1923,9 @@ const confirmTitle = successTitle;
                       </div>
                     </div>
 
-                    <div className="mt-6 text-2xl font-semibold leading-9">
-                      {confirmTitle}
-                    </div>
+                    <div className="mt-6 text-2xl font-semibold leading-9">{confirmTitle}</div>
 
-                    <div className="mt-4 text-sm opacity-60">
-                      Invoice ID: {confirmOverlay.invoiceId}
-                    </div>
+                    <div className="mt-4 text-sm opacity-60">Invoice ID: {confirmOverlay.invoiceId}</div>
                   </div>
 
                   <div className="mt-6 border-t border-white/10" />
@@ -1963,53 +1933,35 @@ const confirmTitle = successTitle;
                   <div className="mt-5 text-sm">
                     <div className="flex items-center justify-between py-1.5">
                       <div className="opacity-70">
-                        {confirmOverlay.context === "transfer"
-                          ? "Transfer Amount"
-                          : "Card Recharge Amount"}
+                        {confirmOverlay.context === "transfer" ? "Transfer Amount" : "Card Recharge Amount"}
                       </div>
-                      <div className="font-semibold">
-                        {formatMoney(confirmOverlay.amountUsd, "USD")}
-                      </div>
+                      <div className="font-semibold">{formatMoney(confirmOverlay.amountUsd, "USD")}</div>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5">
                       <div className="opacity-70">
-                        {confirmOverlay.context === "transfer"
-                          ? "Withhold Fee"
-                          : "Deposit Fee"}
+                        {confirmOverlay.context === "transfer" ? "Withhold Fee" : "Deposit Fee"}
                       </div>
-                      <div className="font-semibold">
-                        {formatMoney(confirmOverlay.feeUsd, "USD")}
-                      </div>
+                      <div className="font-semibold">{formatMoney(confirmOverlay.feeUsd, "USD")}</div>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5">
                       <div className="opacity-70">
-                        {confirmOverlay.context === "transfer"
-                          ? "Service Fee"
-                          : "Card Opening Fee"}
+                        {confirmOverlay.context === "transfer" ? "Service Fee" : "Card Opening Fee"}
                       </div>
-                      <div className="font-semibold">
-                        {formatMoney(confirmOverlay.openingFeeUsd, "USD")}
-                      </div>
+                      <div className="font-semibold">{formatMoney(confirmOverlay.openingFeeUsd, "USD")}</div>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5">
                       <div className="opacity-70">
-                        {confirmOverlay.context === "transfer"
-                          ? "Transfer Amount"
-                          : "Deposit Amount"}
+                        {confirmOverlay.context === "transfer" ? "Transfer Amount" : "Deposit Amount"}
                       </div>
-                      <div className="font-semibold">
-                        {confirmOverlay.solAmount} SOL
-                      </div>
+                      <div className="font-semibold">{confirmOverlay.solAmount} SOL</div>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5">
                       <div className="opacity-70">Invoice Date</div>
-                      <div className="font-semibold">
-                        {new Date(confirmOverlay.dateIso).toLocaleString("fr-FR")}
-                      </div>
+                      <div className="font-semibold">{new Date(confirmOverlay.dateIso).toLocaleString("fr-FR")}</div>
                     </div>
                   </div>
 
@@ -2020,7 +1972,6 @@ const confirmTitle = successTitle;
                       className="h-12 w-full rounded-xl bg-white text-black text-sm font-semibold hover:opacity-95 transition"
                       onClick={() => {
                         closeConfirmOverlay();
-                        // optionnel: scroll / keep on card
                       }}
                     >
                       View your SolCard
@@ -2030,13 +1981,10 @@ const confirmTitle = successTitle;
                   {confirmOverlay.note ? (
                     <div className="mt-3 text-xs text-white/40">
                       {confirmOverlay.note}
-                      {" • "}
-                      Ref: {confirmOverlay.ref}
+                      {" • "}Ref: {confirmOverlay.ref}
                     </div>
                   ) : (
-                    <div className="mt-3 text-xs text-white/40">
-                      Ref: {confirmOverlay.ref}
-                    </div>
+                    <div className="mt-3 text-xs text-white/40">Ref: {confirmOverlay.ref}</div>
                   )}
                 </>
               )}
